@@ -344,7 +344,13 @@ plot_cdi <- function(fit, year = NULL, predictor = NULL){
   preds <- get_preds(fit)
   
   # Add raw data to it
-  preds <- as.data.frame(bind_cols(fit$data,preds))
+  # For GLM it is stored in fit$ data, for survreg it is not stored at all. 
+  if(is.null(.$data)) {
+    raw_data <- fit$data
+  } else if (inherits(fit, "survreg")) {
+    raw_data <- eval(fit$call$data)
+  }
+  preds <- as.data.frame(bind_cols(raw_data,preds))
   
   # extract terms from this formula
   terms_labels <- get_terms(fit, predictor = predictor)
@@ -390,7 +396,6 @@ plot_cdi <- function(fit, year = NULL, predictor = NULL){
     
     # Reorder levels according to coefficients for factors
     if(is.factor(raw_values)) {
-      
       coeffs <- coeffs %>%
         arrange(coef) 
       
@@ -435,7 +440,7 @@ plot_cdi <- function(fit, year = NULL, predictor = NULL){
     
     
     p1 <- ggplot(coeffs, aes(x = term, y = exp(coef))) +
-      geom_point(shape = 2, size = 3) +
+      geom_point(shape = 2, size = 2) +
       geom_errorbar(aes(ymin = exp(lower), ymax = exp(upper)), width = 0) +
       # Bottom Cap
       geom_segment(aes(x = as.numeric(term) - 0.05, xend = as.numeric(term) + 0.05, 
@@ -505,8 +510,8 @@ plot_cdi <- function(fit, year = NULL, predictor = NULL){
       geom_hline(aes(yintercept = level), color = "grey", linewidth = 0.5) +
       geom_vline(xintercept = 1, linetype = "dashed") +
       geom_path(group = 1) +                    # Connects the dots in the order of the data
-      geom_point(size = 5.4, pch = 16) +
-      scale_x_continuous(labels = scales::label_number(accuracy = 0.01)) +
+      geom_point(size = 3, pch = 16) +
+      scale_x_continuous(labels = scales::label_number(accuracy = 0.01), expand = expansion(mult = c(0.2, 0.2))) +
       scale_y_discrete( position = "right") +
       labs(x = "Influence", y = NULL)+
       theme_cowplot() +

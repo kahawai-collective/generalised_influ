@@ -44,7 +44,7 @@ get_unstandardised <- function(fit, year = NULL, rescale = 1, predictor = NULL) 
   
   year_vec <- model.frame(fit)[[year]]
   
-  logged <- grepl('log(', response_name, fixed = TRUE)
+  
   
   # (1) Binomial component only
   if (!is.null(fit$family$family) && any(fit$family$family %in% c("bernoulli", "binomial") | grepl("hurdle", fit$family$family))) {
@@ -94,6 +94,7 @@ get_unstandardised <- function(fit, year = NULL, rescale = 1, predictor = NULL) 
   } else {
     
     # (3) Positive component only
+    logged <- grepl('log(', response_name, fixed = TRUE)
     
     if(logged) log_observed = observed else log_observed = log(observed)
     
@@ -194,7 +195,7 @@ get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, do
     colnames(draws) <- yrs
     
     draws %<>%
-      as_data_frame() %>%
+      as.data.frame() %>%
       mutate(.iteration = row_number()) %>%
       pivot_longer(cols = -.iteration,
                    names_to = 'level',
@@ -307,7 +308,7 @@ get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, do
     colnames(draws) <- yrs
     
     draws %<>%
-      as_data_frame() %>%
+      as.data.frame() %>%
       mutate(.iteration = row_number()) %>%
       pivot_longer(cols = -.iteration,
                    names_to = 'level',
@@ -414,7 +415,7 @@ get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, do
 # colnames(draws) <- yrs
 # 
 # draws %<>%
-#   as_data_frame() %>%
+#   as.data.frame() %>%
 #   mutate(.iteration = row_number()) %>%
 #   pivot_longer(cols = -.iteration,
 #                names_to = 'level',

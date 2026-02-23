@@ -79,13 +79,13 @@ plot_step2 <- function(step_df){
   model_names <- names(step_df)[start_idx:ncol(step_df)]
   
   df_long <- step_df %>%
-    select(Year = level, all_of(model_names)) %>%
+    dplyr::select(Year = level, all_of(model_names)) %>%
     pivot_longer(-Year, names_to = "Model", values_to = "Index") %>%
     mutate(Model = factor(Model, levels = model_names)) # Keeps them in order
   
   # Generate the background data for every facet
   # For each step, we take all data from that step and all previous steps
-  df_all_steps <- map_dfr(seq_along(model_names), function(i) {
+  df_all_steps <- lapply(seq_along(model_names), function(i) {
     df_long %>%
       filter(as.numeric(Model) <= i) %>%
       mutate(
@@ -96,7 +96,9 @@ plot_step2 <- function(step_df){
           TRUE                       ~ "Historical"
         )
       )
-  })
+  })%>%bind_rows()
+  
+  
   p <- ggplot(df_all_steps, aes(x = Year, y = Index, group = Model)) +
     # Historical lines (grey)
     geom_line(data = filter(df_all_steps, LineType == "Historical"), 
@@ -123,7 +125,9 @@ plot_step2 <- function(step_df){
                fill = NA,            
                size = 3.5) +
     labs(x = "fishing year", y = "Index") +
-    scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.05))) +
+    scale_y_continuous(limits = c(0, NA), 
+                       expand = expansion(mult = c(0, 0.1)), 
+                                          guide = guide_axis(check.overlap = TRUE)) +
     facet_wrap(~FacetTarget, ncol = 1) +
     theme_cowplot() +
     theme(
