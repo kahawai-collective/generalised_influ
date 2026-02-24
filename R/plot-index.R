@@ -42,7 +42,7 @@ index_long <- index %>%
     geom_point(aes(shape = index_type, colour = index_type), size = 3) +
     scale_shape_manual(values = c("Standardised" = 16, "Unstandardised" = 1))+
     scale_colour_manual(values = c( fill, "grey40")) +
-    scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.05))) +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
     labs(x = "Fishing year", y = "Index") +
     theme_cowplot() +
     theme(

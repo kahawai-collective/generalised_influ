@@ -100,18 +100,11 @@ plot_step2 <- function(step_df){
   
   
   p <- ggplot(df_all_steps, aes(x = Year, y = Index, group = Model)) +
-    # Historical lines (grey)
-    geom_line(data = filter(df_all_steps, LineType == "Historical"), 
-              color = "grey85") +
-    # Previous line (dashed)
-    geom_line(data = filter(df_all_steps, LineType == "Previous"), 
-              linetype = "dashed", color = "black") +
-    # Current line (blue)
-    geom_line(data = filter(df_all_steps, LineType == "Current"), 
-              color = "royalblue") +
-    
+    geom_line(aes(color = LineType, linetype = LineType == "Previous"), linewidth = 0.5 ) +
+    scale_color_manual(values = c("Historical" = "grey85", "Previous" = "black", "Current" = "royalblue")) +
     geom_point(data = filter(df_all_steps, LineType == "Current"), 
                color = "royalblue") +
+    
     
     geom_label(data = df_all_steps %>%
                  group_by(FacetTarget) %>%
@@ -124,17 +117,20 @@ plot_step2 <- function(step_df){
                label.size = NA,       
                fill = NA,            
                size = 3.5) +
-    labs(x = "fishing year", y = "Index") +
+    labs(x = "Fishing year", y = "Index") +
     scale_y_continuous(limits = c(0, NA), 
                        expand = expansion(mult = c(0, 0.1)), 
-                                          guide = guide_axis(check.overlap = TRUE)) +
+                                          guide = guide_axis(check.overlap = TRUE),
+                       breaks = function(x) unique(pretty(x)[pretty(x) != 0]) )+
     facet_wrap(~FacetTarget, ncol = 1) +
     theme_cowplot() +
     theme(
+      legend.position = "none",
       strip.background = element_blank(), 
       strip.text = element_blank(),       
       panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5), 
-      panel.spacing = unit(0, "lines")
+      panel.spacing = unit(0, "lines"),
+      axis.text = element_text(size = 10)
     )
   
   return(p)
