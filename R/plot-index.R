@@ -2,7 +2,7 @@
 #' 
 #' In this plot the unstandardised indices is the geometric mean of the data.
 #' 
-#' @param fit An object of class \code{brmsfit}.
+#' @param index A dataframe with unstan and stan idex for the model. 
 #' @param year the year or time label.
 #' @param fill the fill colour for the percentiles.
 #' @param probs The percentiles to be computed by the \code{quantile} function.
@@ -15,7 +15,7 @@
 #' @import dplyr
 #' @export
 #' 
-plot_index <- function(fit, 
+plot_index <- function(index, 
                        year = NULL, 
                        fill = "black", 
                        probs = c(0.25, 0.75),
@@ -23,15 +23,11 @@ plot_index <- function(fit,
                        predictor = NULL,
                        show_unstandardised = TRUE) {
   
-  if  (!any(class(fit) %in% c("sdmTMB", "glm", "brmsfit", "survreg"))) stop("This model class is not supported.")
-  
   if (is.null(year)) {
     year <- get_first_term(fit = fit)
   }
   
-  index <- get_index(fit = fit, year = year, probs = probs, rescale = rescale, predictor = predictor) 
-  
-  index_long <- index %>%
+ index_long <- index %>%
     rename(Standardised = stan, Unstandardised = unstan) %>%
     pivot_longer(
       cols = c(Standardised, Unstandardised), 

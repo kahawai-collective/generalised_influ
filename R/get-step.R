@@ -25,6 +25,7 @@ get_step <- function(fit, pred_grid = NULL, predictor = NULL) {
   if (is_sdm){
     
     if  (is.null(predictor)) stop("Argument 'predictor' is missing. Please specify 1 for the first part or 2 for the hurdle part.")
+    if  (is.null(pred_grid)) stop("Argument 'pred_grid' is missing. Please pass prediction grid including environment covariate values for the full geograhpical area.")
     newFormula <- (fit$formula)[[predictor]]
     sptp_on <- fit$spatiotemporal[predictor]!="off"
     

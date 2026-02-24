@@ -334,7 +334,7 @@ plot_bayesian_cdi2 <- function(fit,
 #' 
 #' @export
 
-plot_cdi <- function(fit, year = NULL, predictor = NULL){
+plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL){
   
   if (is.null(year)) {
     year <- get_first_term(fit = fit)
@@ -345,17 +345,23 @@ plot_cdi <- function(fit, year = NULL, predictor = NULL){
   
   # Add raw data to it
   # For GLM it is stored in fit$ data, for survreg it is not stored at all. 
-  if(is.null(.$data)) {
+  if(is.null(raw_data)) {
     raw_data <- fit$data
-  } else if (inherits(fit, "survreg")) {
+  } 
+  
+  if (is.null(raw_data) && inherits(fit, "survreg")) {
     raw_data <- eval(fit$call$data)
   }
+  
   preds <- as.data.frame(bind_cols(raw_data,preds))
   
   # extract terms from this formula
   terms_labels <- get_terms(fit, predictor = predictor)
   
-  result <- lapply(setdiff(terms_labels, year), function(term_label) {
+  # exclude year from terms
+  terms_labels <- setdiff(terms_labels, year)
+  
+  result <- setNames(lapply(terms_labels, function(term_label) {
     
     # Define col names for fitted terms and ses
     fit_colname <- sym(paste0('fit.', term_label))
@@ -381,7 +387,6 @@ plot_cdi <- function(fit, year = NULL, predictor = NULL){
     } else {
       levels <- raw_values
     }
-    
     
     coeffs <- preds %>%
       group_by(term = !!levels) %>%  
@@ -531,7 +536,7 @@ plot_cdi <- function(fit, year = NULL, predictor = NULL){
     print(combined_plot)
     
     
-  })
+  }), terms_labels)
   
   return (result)
 }
