@@ -365,6 +365,7 @@ get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, do
     ungroup() %>%
     group_by(level) %>%
     summarise(
+      stan_unscaled = median(.value),
       stan = median(rel_idx),
       stanLower = quantile(rel_idx, 0.025),
       stanUpper = quantile(rel_idx, 0.975)

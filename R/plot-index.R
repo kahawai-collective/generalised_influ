@@ -22,28 +22,40 @@ plot_index <- function(index,
                        predictor = NULL,
                        show_unstandardised = TRUE) {
   
-index_long <- index %>%
+  target_cols <- c("Standardised", "Unstandardised")
+  
+  if ('unstan_prob' %in% names(index)) {
+    target_cols <- c(target_cols, "unstan_prob", "stan_unscaled")
+  }
+  
+  index_long <- index %>%
     rename(Standardised = stan, Unstandardised = unstan) %>%
     pivot_longer(
-      cols = c(Standardised, Unstandardised), 
+      cols = all_of(target_cols),
       names_to = "index_type", 
       values_to = "Index"
-    )
+    ) %>%
+    mutate(
+      facet = case_when(
+        index_type %in% c("Standardised", "Unstandardised") ~ "relative",
+        index_type %in% c("unstan_prob", "stan_unscaled")  ~ "probabilties"
+      ))
   
   if (!show_unstandardised) {
     index_long <- index_long %>% filter(index_type != "Unstandardised")
   }
   
- p <-  ggplot(index_long, aes(x = level, y = Index, group = index_type)) +
+  p <-  ggplot(index_long, aes(x = level, y = Index, group = index_type)) +
     geom_ribbon(aes(ymin = stanLower, ymax = stanUpper), 
                 data = filter(index_long, index_type == "Standardised"),
                 fill = fill, color = NA, alpha = 0.1) +
     geom_line(aes(linetype = index_type, colour = index_type)) +
     geom_point(aes(shape = index_type, colour = index_type), size = 3) +
     scale_shape_manual(values = c("Standardised" = 16, "Unstandardised" = 1))+
-    scale_colour_manual(values = c( fill, "grey40")) +
+    scale_colour_manual(values = c( fill, "grey40", fill, 'grey40')) +
     scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
     labs(x = "Fishing year", y = "Index") +
+    facet_wrap(~facet, ncol = 1)+
     theme_cowplot() +
     theme(
       legend.direction = "horizontal",
