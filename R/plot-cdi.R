@@ -533,7 +533,7 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL){
         plot.margin = margin(0, 0, 0, 0)  
       )
     
-    print(combined_plot)
+    # print(combined_plot)
     
     
   }), terms_labels)
