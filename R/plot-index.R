@@ -16,18 +16,13 @@
 #' @export
 #' 
 plot_index <- function(index, 
-                       year = NULL, 
                        fill = "black", 
                        probs = c(0.25, 0.75),
                        rescale = 1,
                        predictor = NULL,
                        show_unstandardised = TRUE) {
   
-  if (is.null(year)) {
-    year <- get_first_term(fit = fit)
-  }
-  
- index_long <- index %>%
+index_long <- index %>%
     rename(Standardised = stan, Unstandardised = unstan) %>%
     pivot_longer(
       cols = c(Standardised, Unstandardised), 
