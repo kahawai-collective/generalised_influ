@@ -1,0 +1,498 @@
+---
+title: "Generalised influence diagnostics across model types"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 3
+vignette: >
+  %\VignetteIndexEntry{Generalised influence diagnostics across model types}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# Introduction
+
+Catch-per-unit-effort (CPUE) standardisation is a cornerstone of fisheries stock
+assessment. Two R packages -- `influ` and `influ2` -- have provided influence
+diagnostics for GLM- and brms-based CPUE models respectively. The `Ginflu`
+package generalises these tools so that the same `get_*` and `plot_*` functions
+work across model types, including standard GLMs, Bayesian models fitted with
+`brms`, and spatio-temporal models fitted with `sdmTMB`.
+
+This vignette demonstrates the workflow end-to-end:
+
+1. **Simulate** a realistic CPUE data set with zeros and positive catches driven
+   by an underlying abundance trend, spatial structure, and operational
+   (catchability) covariates. Temporal trends in the vessels present and areas
+   fished create strong confounding that the influence diagnostics are designed
+   to detect.
+2. **Fit GLM-based models** (binomial and lognormal positive) and extract
+   indices and influence diagnostics using `Ginflu`.
+3. **Fit brms Bayesian models** to the same data and show that `get_index()`,
+   `get_step()`, and `plot_bayesian_cdi()` work on `brmsfit` objects.
+4. **Fit sdmTMB spatio-temporal models** to the same data and show that the
+   same `get_*` / `plot_*` interface applies (CDI plots are not yet supported
+   for sdmTMB).
+
+```{r packages}
+library(sdmTMB)
+library(brms)
+library(Ginflu)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(cowplot)
+library(mvtnorm)
+```
+
+# Simulating a CPUE data set
+
+We simulate a 20-year fishery observed across a spatial grid. True abundance
+follows a declining-then-recovering trend over time and varies spatially.
+Operational covariates (vessel and season) affect catchability. Importantly,
+both the probability of capture (encounter rate) and the positive catch rate
+depend on abundance -- as abundance declines, encounters become rarer and
+positive catches become smaller -- a realistic feature that makes standardisation
+essential.
+
+To generate strong, detectable influences, the fleet composition and spatial
+coverage shift over time:
+
+- **Vessel trend**: high-catchability vessels (V1--V5) dominate in the early
+  years; low-catchability vessels (V11--V15) take over in the later years.
+- **Area trend**: productive areas (A1--A2) are fished heavily in the early
+  years; poor areas (A5--A6) are fished mainly in the later years.
+
+As a result, the raw CPUE trend is much steeper than the true abundance trend
+(inflated early, deflated late), making it an ideal test case for influence
+diagnostics.
+
+```{r simulate-data}
+set.seed(42)
+
+n_years   <- 20
+n_vessels <- 15
+n_areas   <- 6
+n_seasons <- 4
+n_obs     <- 4000
+
+# --- True abundance trend: decline then recovery ---
+years <- 1:n_years
+true_trend <- exp(-0.04 * (years - 10)^2 / 10 + 0.3 * sin(years / 3))
+true_trend <- true_trend / mean(true_trend)  # centre around 1
+
+# --- Structured area effects: A1-A2 productive, A5-A6 poor ---
+area_effects <- setNames(
+  c(0.55, 0.45, 0.10, -0.10, -0.45, -0.55),
+  paste0("A", 1:n_areas)
+)
+
+# --- Structured vessel catchability: V1-V5 high, V6-V10 neutral, V11-V15 low ---
+vessel_effects <- setNames(
+  c(runif(5, 0.5, 0.9), rnorm(5, 0, 0.2), runif(5, -0.9, -0.5)),
+  paste0("V", 1:n_vessels)
+)
+
+# --- Season effects on catchability ---
+season_effects <- setNames(c(-0.3, 0.1, 0.3, -0.1), paste0("S", 1:n_seasons))
+
+# --- Draw observations with year-dependent fleet and area composition ---
+# Vessel weights: high-catchability fleet (V1-5) dominant early;
+#                 low-catchability fleet (V11-15) dominant late.
+# Area weights:   productive areas (A1-2) fished heavily early;
+#                 poor areas (A5-6) fished mainly late.
+fyear_vec  <- sample(years, n_obs, replace = TRUE)
+vessel_col <- character(n_obs)
+area_col   <- character(n_obs)
+
+for (yr in years) {
+  idx  <- which(fyear_vec == yr)
+  n_yr <- length(idx)
+
+  vw <- c(
+    rep(pmax(0.05, 1.6 - 0.14 * yr), 5),  # V1-V5:   decreasing over time
+    rep(1, 5),                              # V6-V10:  constant
+    rep(pmax(0.05, 0.14 * yr - 0.7), 5)   # V11-V15: increasing over time
+  )
+  vessel_col[idx] <- sample(paste0("V", 1:15), n_yr,
+                             prob = vw / sum(vw), replace = TRUE)
+
+  aw <- c(
+    rep(pmax(0.05, 1.6 - 0.14 * yr), 2),  # A1-A2: decreasing over time
+    rep(1, 2),                             # A3-A4: constant
+    rep(pmax(0.05, 0.14 * yr - 0.7), 2)   # A5-A6: increasing over time
+  )
+  area_col[idx] <- sample(paste0("A", 1:6), n_yr,
+                           prob = aw / sum(aw), replace = TRUE)
+}
+
+dat <- data.frame(
+  fyear  = factor(fyear_vec),
+  area   = factor(area_col,   levels = paste0("A", 1:n_areas)),
+  vessel = factor(vessel_col, levels = paste0("V", 1:n_vessels)),
+  season = factor(sample(paste0("S", 1:n_seasons), n_obs, replace = TRUE))
+)
+
+# Local abundance for each observation
+dat$log_abundance <- log(true_trend[as.integer(as.character(dat$fyear))]) +
+  area_effects[as.character(dat$area)]
+
+# Encounter probability increases with abundance (logit scale)
+dat$p_encounter <- plogis(-0.3 + 0.8 * dat$log_abundance +
+                            vessel_effects[as.character(dat$vessel)] * 0.3 +
+                            season_effects[as.character(dat$season)] * 0.3)
+
+# Positive catch rate also scales with abundance
+dat$mu_positive <- exp(2.0 + 0.5 * dat$log_abundance +
+                         vessel_effects[as.character(dat$vessel)] +
+                         season_effects[as.character(dat$season)])
+
+# Generate catch: zero-inflated lognormal
+dat$encounter     <- rbinom(n_obs, 1, dat$p_encounter)
+dat$positive_catch <- rlnorm(n_obs, log(dat$mu_positive), 0.6)
+dat$catch         <- dat$encounter * dat$positive_catch
+
+# Create positive-only subset and log-catch
+dat$log_catch <- ifelse(dat$catch > 0, log(dat$catch), NA)
+dat_pos <- dat |> filter(catch > 0)
+```
+
+A quick look at the data confirms the structure: many zeros whose proportion
+covaries with abundance, and positive catches that track the trend.
+
+```{r data-summary, fig.height = 3.5}
+dat |>
+  mutate(year = as.integer(as.character(fyear))) |>
+  group_by(year) |>
+  summarise(
+    prop_pos = mean(catch > 0),
+    mean_pos = mean(catch[catch > 0]),
+    .groups = "drop"
+  ) |>
+  pivot_longer(-year) |>
+  ggplot(aes(year, value)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~name, scales = "free_y") +
+  labs(x = "Year", y = NULL) +
+  theme_minimal()
+```
+
+# GLM-based standardisation
+
+## Fitting the models
+
+We fit a binomial GLM for the encounter probability and a lognormal (Gaussian
+on log-catch) GLM for positive catches. The first term in each formula is the
+year factor (`fyear`), which is the index variable.
+
+```{r glm-fit}
+# Binomial model for encounter rate
+glm_bin <- glm(encounter ~ fyear + area + vessel + season,
+               data = dat, family = binomial(link = "logit"))
+
+# Lognormal model for positive catches
+glm_pos <- glm(log_catch ~ fyear + area + vessel + season,
+               data = dat_pos, family = gaussian(link = "identity"))
+```
+
+## Extracting indices with `get_index`
+
+`get_index()` works on any supported model class. It returns a data frame with
+unstandardised and standardised index values plus confidence intervals.
+
+```{r glm-index}
+idx_bin <- get_index(glm_bin)
+idx_pos <- get_index(glm_pos)
+```
+
+```{r glm-index-table}
+head(idx_bin)
+head(idx_pos)
+```
+
+## Index plots with `plot_index`
+
+`plot_index()` takes the output of `get_index()` and produces a standardised
+index plot with the unstandardised series overlaid.
+
+```{r glm-plot-index-bin, fig.cap = "Binomial (encounter) index from GLM."}
+plot_index(idx_bin)
+```
+
+```{r glm-plot-index-pos, fig.cap = "Positive catch index from GLM."}
+plot_index(idx_pos)
+```
+
+## Step-plots with `get_step` and `plot_step2`
+
+The step-plot shows how the standardised index changes as covariates are
+sequentially added to the model. `get_step()` refits the model with terms added
+one at a time and collects the index at each step.
+
+```{r glm-step-bin}
+step_bin <- get_step(glm_bin)
+```
+
+```{r glm-step-bin-plot, fig.height = 8, fig.cap = "Step-plot for the binomial GLM."}
+plot_step2(step_bin)
+```
+
+```{r glm-step-pos}
+step_pos <- get_step(glm_pos)
+```
+
+```{r glm-step-pos-plot, fig.height = 8, fig.cap = "Step-plot for the positive GLM."}
+plot_step2(step_pos)
+```
+
+## CDI plots with `plot_cdi`
+
+The CDI (Coefficient-Distribution-Influence) plot provides a diagnostic summary
+for each covariate: estimated coefficients (top-left), data distribution
+across years (bottom-left), and the year-specific influence of the covariate
+on the index (bottom-right).
+
+```{r glm-cdi-bin, fig.height = 7, fig.width = 8, fig.cap = "CDI plots for the binomial GLM.", results = "hide"}
+plot_cdi(glm_bin)
+```
+
+```{r glm-cdi-pos, fig.height = 7, fig.width = 8, fig.cap = "CDI plots for the positive GLM.", results = "hide"}
+plot_cdi(glm_pos)
+```
+
+# brms Bayesian standardisation
+
+`Ginflu` has first-class support for Bayesian models fitted with `brms`. The
+same `get_index()` / `get_step()` / `plot_index()` / `plot_step2()` functions
+accept `brmsfit` objects directly. For CDI diagnostics, the Bayesian-specific
+`plot_bayesian_cdi()` function leverages the full posterior distribution.
+
+## Fitting the models
+
+We fit the same model structure as the GLM section. Keeping chains and
+iterations low makes the vignette practical to knit; for real analyses use at
+least 4 chains and 2000 iterations.
+
+```{r brms-fit, cache = TRUE, results = "hide"}
+brm_bin <- brm(
+  encounter ~ fyear + area + vessel + season,
+  data    = dat,
+  family  = bernoulli(link = "logit"),
+  chains  = 2, iter = 1000, warmup = 500,
+  cores   = 2, seed = 42, refresh = 0
+)
+
+brm_pos <- brm(
+  log_catch ~ fyear + area + vessel + season,
+  data    = dat_pos,
+  family  = gaussian(link = "identity"),
+  chains  = 2, iter = 1000, warmup = 500,
+  cores   = 2, seed = 42, refresh = 0
+)
+```
+
+## Extracting indices with `get_index`
+
+`get_index()` draws from the posterior predictive distribution and returns the
+same tidy data frame as for GLMs.
+
+```{r brms-index, cache = TRUE}
+idx_brm_bin <- get_index(brm_bin)
+idx_brm_pos <- get_index(brm_pos)
+```
+
+```{r brms-index-table}
+head(idx_brm_bin)
+head(idx_brm_pos)
+```
+
+## Index plots with `plot_index`
+
+```{r brms-plot-index-bin, fig.cap = "Binomial (encounter) index from brms."}
+plot_index(idx_brm_bin)
+```
+
+```{r brms-plot-index-pos, fig.cap = "Positive catch index from brms."}
+plot_index(idx_brm_pos)
+```
+
+## Step-plots with `get_step` and `plot_step2`
+
+`get_step()` refits the model with terms added sequentially. Because each
+update requires a new MCMC run, this step is slower for brms than for GLMs;
+caching is recommended.
+
+```{r brms-step-bin, cache = TRUE}
+step_brm_bin <- get_step(brm_bin)
+```
+
+```{r brms-step-bin-plot, fig.height = 8, fig.cap = "Step-plot for the brms binomial model."}
+plot_step2(step_brm_bin)
+```
+
+```{r brms-step-pos, cache = TRUE}
+step_brm_pos <- get_step(brm_pos)
+```
+
+```{r brms-step-pos-plot, fig.height = 8, fig.cap = "Step-plot for the brms positive model."}
+plot_step2(step_brm_pos)
+```
+
+## Bayesian CDI plots with `plot_bayesian_cdi`
+
+`plot_bayesian_cdi()` is the Bayesian counterpart of `plot_cdi()`. It uses the
+posterior samples of the coefficients and the influence metric to draw violin
+plots for categorical covariates (or ribbon plots for continuous ones), together
+with the data distribution bubble chart.
+
+```{r brms-cdi-vessel-bin, fig.height = 7, fig.width = 8, fig.cap = "Bayesian CDI for vessel effect (binomial model)."}
+plot_bayesian_cdi(brm_bin, xfocus = "vessel", yfocus = "fyear")
+```
+
+```{r brms-cdi-area-bin, fig.height = 7, fig.width = 8, fig.cap = "Bayesian CDI for area effect (binomial model)."}
+plot_bayesian_cdi(brm_bin, xfocus = "area", yfocus = "fyear")
+```
+
+```{r brms-cdi-vessel-pos, fig.height = 7, fig.width = 8, fig.cap = "Bayesian CDI for vessel effect (positive model)."}
+plot_bayesian_cdi(brm_pos, xfocus = "vessel", yfocus = "fyear")
+```
+
+# sdmTMB spatio-temporal standardisation
+
+The same `get_*` and `plot_*` functions extend to spatio-temporal models fitted
+with `sdmTMB`. We add spatial coordinates to our simulated data and fit a
+delta (hurdle) model.
+
+## Preparing spatial data
+
+```{r sdm-spatial-setup}
+# Assign coordinates to areas (a simple regular layout)
+area_coords <- data.frame(
+  area = paste0("A", 1:n_areas),
+  X = rep(1:3, 2),
+  Y = rep(1:2, each = 3)
+)
+
+dat <- dat |> left_join(area_coords, by = "area")
+dat_pos <- dat |> filter(catch > 0)
+
+# Create the SPDE mesh
+mesh <- make_mesh(dat, xy_cols = c("X", "Y"), cutoff = 0.5)
+
+# Prediction grid: all area centroids x all years
+pred_grid <- expand.grid(
+  X = unique(area_coords$X),
+  Y = unique(area_coords$Y),
+  fyear = factor(1:n_years)
+) |>
+  left_join(
+    dat |>
+      group_by(area) |>
+      summarise(across(c(vessel, season), ~ names(sort(-table(.x)))[1]),
+                .groups = "drop") |>
+      left_join(area_coords, by = "area"),
+    by = c("X", "Y")
+  )
+pred_grid$vessel <- factor(pred_grid$vessel, levels = levels(dat$vessel))
+pred_grid$season <- factor(pred_grid$season, levels = levels(dat$season))
+```
+
+## Fitting the delta model
+
+We fit a delta (hurdle) sdmTMB model with the same fixed-effect structure.
+The first component models encounter probability (binomial), the second models
+positive catch rates (lognormal). Spatial random fields account for
+unmeasured spatial variation.
+
+```{r sdm-fit, results = "hide"}
+fit_sdm <- sdmTMB(
+  catch ~ fyear + vessel + season,
+  data = dat,
+  mesh = mesh,
+  family = delta_lognormal(),
+  spatial = "on",
+  spatiotemporal = "off",
+  time = "fyear"
+)
+```
+
+```{r sdm-sanity}
+sanity(fit_sdm)
+```
+
+## Extracting indices
+
+`get_index()` recognises the sdmTMB model class. The `predictor` argument
+selects the model component: `1` for binomial, `2` for positive.
+
+```{r sdm-index}
+idx_sdm_bin <- get_index(fit_sdm, pred_grid = pred_grid, predictor = 1)
+idx_sdm_pos <- get_index(fit_sdm, pred_grid = pred_grid, predictor = 2)
+```
+
+## Index plots
+
+The same `plot_index()` function works seamlessly.
+
+```{r sdm-plot-index-bin, fig.cap = "Binomial index from sdmTMB."}
+plot_index(idx_sdm_bin)
+```
+
+```{r sdm-plot-index-pos, fig.cap = "Positive index from sdmTMB."}
+plot_index(idx_sdm_pos)
+```
+
+## Step-plots
+
+`get_step()` also handles sdmTMB models. It sequentially adds terms and,
+for sdmTMB, also adds the spatial and spatiotemporal fields as final steps.
+
+```{r sdm-step-bin}
+step_sdm_bin <- get_step(fit_sdm, pred_grid = pred_grid, predictor = 1)
+```
+
+```{r sdm-step-bin-plot, fig.height = 8, fig.cap = "Step-plot for the sdmTMB binomial component."}
+plot_step2(step_sdm_bin)
+```
+
+```{r sdm-step-pos}
+step_sdm_pos <- get_step(fit_sdm, pred_grid = pred_grid, predictor = 2)
+```
+
+```{r sdm-step-pos-plot, fig.height = 8, fig.cap = "Step-plot for the sdmTMB positive component."}
+plot_step2(step_sdm_pos)
+```
+
+> **Note:** CDI plots are not yet implemented for sdmTMB models. This
+> functionality will be added in a future release.
+
+# Summary
+
+The `Ginflu` package provides a unified interface for CPUE index extraction and
+influence diagnostics across model frameworks:
+
+| Function | GLM | brms | sdmTMB | Description |
+|:---|:---:|:---:|:---:|:---|
+| `get_index()` | Y | Y | Y | Standardised and unstandardised indices |
+| `get_step()` | Y | Y | Y | Indices with terms added sequentially |
+| `get_influ_glm()` | Y | | | Influence metric for GLM-type models |
+| `plot_index()` | Y | Y | Y | Index time-series with confidence bands |
+| `plot_step2()` | Y | Y | Y | Step-plot of sequential model building |
+| `plot_cdi()` | Y | | | Coefficient-Distribution-Influence diagnostic |
+| `plot_bayesian_cdi()` | | Y | | Bayesian CDI with posterior distributions |
+
+By keeping the function signatures consistent, analysts can switch between a
+simple GLM-based workflow, a Bayesian workflow, and a full spatio-temporal
+standardisation without changing their diagnostic pipeline.

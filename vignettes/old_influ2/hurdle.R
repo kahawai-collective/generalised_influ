@@ -1,0 +1,56 @@
+## ----include = FALSE----------------------------------------------------------
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+
+## ----echo=TRUE, fig.height=6, fig.width=6, message=FALSE----------------------
+library(tidyverse)
+library(reshape2)
+library(brms)
+library(influ2)
+library(bayesplot)
+
+options(mc.cores = parallel::detectCores())
+
+# Simulate some data to use
+set.seed(2020)
+
+# create data according to the hurdle-lognormal distribution
+pi <- 0.3 # probability of a zero
+mu_log <- 2 # lognormal mean
+sigma_log <- 0.2
+
+# generate data
+N <- 1000
+
+set.seed(seed = 42)
+ydf <- data.frame(year = 1995:2015, value = rnorm(n = 21, mean = 0, sd = 1))
+idy <- sample(x = 1:21, size = N, replace = TRUE)
+yr <- ydf[idy,]
+levs <- sample(x = c("treat", "placebo"), size = N, replace = TRUE)
+group <- data.frame(level = levs) %>% 
+  mutate(value = ifelse(level == "treat", 0.9, 0))
+y <- (1 - rbinom(n = N, size = 1, prob = pi)) * 
+  rlnorm(n = N, meanlog = mu_log + group$value + yr$value, sdlog = sigma_log)
+sim_data <- data.frame(y = y, group = group$level, year = factor(yr$year))
+
+head(sim_data)
+
+## ----echo=TRUE, fig.height=6, fig.width=6, message=FALSE, fig.cap = "Distribution of data by year and group."----
+plot_bubble(df = sim_data, group = c("year", "group"))
+
+## ----echo=TRUE, fig.height=6, fig.width=6, message=FALSE----------------------
+m1 <- brm(bf(y ~ year + group, hu ~ 1), 
+          data = sim_data, family = "hurdle_lognormal", chains = 2, 
+          file = "m1", file_refit = "never")
+
+## ----echo=TRUE, fig.height=6, fig.width=6, message=FALSE----------------------
+plot_index(m1, year = "year")
+
+## ----echo=TRUE, fig.height=6, fig.width=6, message=FALSE----------------------
+# plot_influ(m1, year = "year")
+
+## ----echo=TRUE, fig.height=6, fig.width=6, message=FALSE, fig.cap = "The new Bayesian CDI plot from the influ2 package."----
+# plot_bayesian_cdi(fit = m1, xfocus = "group", yfocus = "year", xlab = "Group")
+
