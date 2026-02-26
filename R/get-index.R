@@ -54,7 +54,7 @@ get_unstandardised <- function(fit, year = NULL, rescale = 1, predictor = NULL) 
                              mean) %>%
       mutate(unstan = exp(log(unstan_prob)-mean(log(unstan_prob))))         # derive ratio of each index to its geo mean (relative index)
     
-    indices <-indices_bin
+    indices <-indices_bin %>% rename(unstan_unscaled = unstan_prob)
     
     # (2) sdmTMB model: Add positive component and combine  
     if(is_sdm){
