@@ -43,6 +43,9 @@ get_step <- function(fit, pred_grid = NULL, predictor = NULL) {
   # initiate effects list
   effects <- list()
   
+  # initiate summary table
+  step_summary <- list()
+  
   # Create models with terms successively added
   for(termCount in 0:(length(terms_labels)+is_sdm + sptp_on)){
     
@@ -97,14 +100,55 @@ get_step <- function(fit, pred_grid = NULL, predictor = NULL) {
     
     # TO DO calculate summary statistics here
     
+    logLik <- switch(class(fit_reduced)[1],
+                     brmsfit = mean(rowSums(log_lik(fit_reduced))),
+                     logLik(fit_reduced))
+    
+    aic <- switch(class(fit_reduced)[1],
+                  brmsfit = NA,
+                  AIC(fit_reduced))
+    
+    r2Dev <- switch(class(fit_reduced)[1],
+                    glm = (fit_reduced$null.deviance-fit_reduced$deviance)/fit_reduced$null.deviance*100,
+                    NA)
+    
+    step_summary[[termCount+1]] <- data.frame(term = term,
+                                              df = extractAIC(fit_reduced)[1],
+                                              logLik = logLik,
+                                              AIC = aic,
+                                              r2Dev = r2Dev)
+    
   }
+  
+  # combine summary stats:
+  step_summary <- do.call(rbind, step_summary)  
+  
+  
+  if (inherits(fit, 'survreg')) {
+    
+    resp <- as.character(formula(fit)[2])
+    resp <- gsub("^Surv\\(|\\)$", "", resp)
+    saturated_model <- update(fit, formula. = paste('. ~ ',resp))
+    residDev <- 2*(saturated_model$loglik[2] - step_summary$logLik)
+    step_summary$r2Dev <- (residDev[1] - residDev)/residDev[1]*100
+    
+  }
+  
+  step_summary %<>% 
+    mutate(
+      r2Dev_delta = r2Dev - lag(r2Dev, default =  0), # defaults are there to handle first row. It is the value of lag at 'time zero'
+      df = df - lag(df, default = 0),
+      Included = "*"
+    ) %>%
+    select(-logLik)
+  
   #  Combine all the effect columns into one wide data frame
   all_idx <- do.call(cbind, effects)
   
   #  Final bind indices from last iteration with unstan and CI + all the steps 
   indices <- cbind(idx_reduced, all_idx)  
   
-  return(indices)
+  return(list(step_indices = indices, step_summary = step_summary))
 }
 
 ###################################### DRAFT with summary stats ############################################

@@ -18,6 +18,7 @@ data-raw/
 
 # RStudio files
 .Rproj.user/
+*.Rproj
 
 # produced vignettes
 vignettes/*.pdf
