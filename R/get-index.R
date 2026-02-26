@@ -94,8 +94,8 @@ get_unstandardised <- function(fit, year = NULL, rescale = 1, predictor = NULL) 
   } else {
     
     # (3) Positive component only
-    logged <- grepl('log(', response_name, fixed = TRUE)
-    
+    logged <- any(grepl('log', as.character(response_name), fixed = TRUE))
+
     if(logged) log_observed = observed else log_observed = log(observed)
     
     indices <- aggregate(list(unstan_pos=log_observed),                        # derive mean by year
