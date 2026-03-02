@@ -5,8 +5,7 @@
 \title{Plot the standardised and unstandardised indices}
 \usage{
 plot_index(
-  fit,
-  year = NULL,
+  index,
   fill = "black",
   probs = c(0.25, 0.75),
   rescale = 1,
@@ -15,9 +14,7 @@ plot_index(
 )
 }
 \arguments{
-\item{fit}{An object of class \code{brmsfit}.}
-
-\item{year}{the year or time label.}
+\item{index}{A dataframe with unstan and stan idex for the model.}
 
 \item{fill}{the fill colour for the percentiles.}
 
@@ -26,6 +23,8 @@ plot_index(
 \item{rescale}{the index of the series to rescale to. If set to NULL then no rescaling is done.}
 
 \item{show_unstandardised}{show the unstandardised series or not.}
+
+\item{year}{the year or time label.}
 }
 \value{
 a \code{ggplot} object.
