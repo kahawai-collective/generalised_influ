@@ -142,3 +142,47 @@ plot_predicted_residuals <- function(fit, trend = "loess", type = "ordinary") {
   
   return(p)
 }
+
+
+###################################################################################
+# Oxana draft code 3 March 2026
+###################################################################################
+
+year <- 'fyear'
+grouping_var <- 'target_species'
+idx <- get_index(fit)
+ric_data <- cbind(model_data, get_preds(fit)) %>%
+  left_join(idx, by = c('fyear'='level')) %>%
+  mutate(resid  = residuals(fit, type = 'response'),
+         implied = stan_unscaled + resid) %>%
+  group_by(!!sym(year), !!sym(grouping_var)) %>%
+  summarise(implied = mean(implied),
+            idx = mean(stan_unscaled),
+            se = sd(resid)/sqrt(length(resid)))
+
+
+
+ggplot(ric_data,
+       aes(x=fyear,
+           y=implied))+
+  geom_point()+
+  geom_line( group = 1)+
+  geom_errorbar(aes(ymin=(implied-1.96*se),
+                    ymax=(implied+1.96*se)),
+                size=0.3,
+                width=0.3)+
+  geom_hline(yintercept=1,
+             linetype=3,
+             colour='grey')+
+  geom_line(aes(y=idx, group = 1),
+            col='grey')+
+  # ylim(c(0,max(exp(imp$mean))*1.1))+
+  scale_y_log10()+
+  facet_wrap(as.formula(paste('~','target_species')),
+             ncol=2,scales='free_y')+
+  labs(x='Fishing year',
+       y='Coefficient') +
+  theme_cowplot()+
+  theme(axis.text.x = element_text(hjust = 0,
+                                   angle = 90))
+
