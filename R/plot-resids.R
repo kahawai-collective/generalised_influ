@@ -165,7 +165,7 @@ plot_predicted_residuals <- function(fit, trend = "loess", type = "ordinary") {
 #' @export
 
 
-plot_RIC <- function(fit, grouping_var = 'stat_area'){
+plot_RIC <- function(fit, grouping_var = 'stat_area', add.rho = TRUE){
   year <- get_first_term(fit)
   grouping_var <- grouping_var
   idx <- get_index(fit)
@@ -179,27 +179,39 @@ plot_RIC <- function(fit, grouping_var = 'stat_area'){
   
   ric_data <- data.frame(level = raw_data[[year]],
                          group = raw_data[[grouping_var]],
-                         resid  = residuals(fit, type = 'response')) %>%
+                         resid  = residuals(fit, type = 'response'), 
+                         se = predict(fit, type = "response", se.fit = TRUE)$se.fit
+                         # se = sd(resid)/sqrt(length(resid))
+  ) %>%
     left_join(idx, by = 'level') %>%
     mutate(implied = if (grepl("log", formula(fit)[2])) {
       stan_unscaled * exp(resid)
     } else {
       stan_unscaled + resid
-    }) %>%
+    },
+    # lower_log  = log(implied) - 1.96 * se,
+    # upper_log = log(implied) + 1.96 * se
+    # lower_log  = log(implied - 1.96 * se),
+    # upper_log = log(implied + 1.96 * se)
+    ) %>%
     group_by(group, level) %>%
     summarise(implied = mean(implied),
               idx_abs = mean(stan_unscaled),
-              se = sd(resid)/sqrt(length(resid)),
+              n=length(resid),
               .groups = 'drop_last')   %>%
-    mutate(base = mean(c(log(idx_abs), log(implied))),
-           imp_scaled = exp(log(implied) - base),
-           idx_scaled = exp(log(idx_abs) - base))
+    mutate(base_idx = mean(log(idx_abs)),
+           base_imp = mean(log(implied)),
+           imp_scaled = exp(log(implied) - base_imp),
+           # lower_scaled = exp(lower_log - base_imp),
+           # upper_scaled = exp(upper_log - base_imp),
+           idx_scaled = exp(log(idx_abs) - base_idx),
+           Num = sum(n, na.rm = TRUE),
+           rho=cor(implied, idx_abs, use="pairwise.complete.obs"))
   
-  
-  p <- ggplot(ric_data,
-         aes(x=level,
-             y=imp_scaled))+
-    geom_point()+
+  p <-   ggplot(ric_data,
+                aes(x=level,
+                    y=imp_scaled))+
+    geom_point(aes(size=n), alpha = 0.5)+
     geom_line( group = 1)+
     # geom_errorbar(aes(ymin=(implied-1.96*se),
     #                   ymax=(implied+1.96*se)),
@@ -213,10 +225,22 @@ plot_RIC <- function(fit, grouping_var = 'stat_area'){
     facet_wrap(~group,
                ncol=2,scales='free_y')+
     labs(x='Fishing year',
-         y='Index') +
+         y='Index',
+         size="Records") +
     theme_cowplot()+
     theme(axis.text.x = element_text(hjust = 0,
-                                     angle = 90))
+                                     angle = 90)) +
+    (if(add.rho) {
+      list(
+        geom_text(aes(x = Inf, y = Inf, label = Num), 
+                  vjust = 1.2, hjust = 1.1, colour = 'deepskyblue4'),
+        geom_text(aes(x = Inf, y = Inf, label = paste0('rho == ', round(rho, 2))), 
+                  vjust = 2.6, hjust = 1.1, colour = 'deepskyblue4', parse = TRUE)
+      )
+    } else {
+      NULL
+    })
   
   return(p)
 }
+
