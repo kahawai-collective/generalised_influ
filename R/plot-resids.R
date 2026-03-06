@@ -167,7 +167,7 @@ plot_predicted_residuals <- function(fit, trend = "loess", type = "ordinary") {
 
 plot_RIC <- function(fit, grouping_var = 'stat_area', add.rho = TRUE){
   year <- get_first_term(fit)
-  grouping_var <- grouping_var
+  grouping_var <- sym(grouping_var)
   idx <- get_index(fit)
   
   raw_data <- fit$data
@@ -177,52 +177,43 @@ plot_RIC <- function(fit, grouping_var = 'stat_area', add.rho = TRUE){
     raw_data <- eval(fit$call$data)
   }
   
-  ric_data <- data.frame(level = raw_data[[year]],
-                         group = raw_data[[grouping_var]],
-                         resid  = residuals(fit, type = 'response'), 
-                         se = predict(fit, type = "response", se.fit = TRUE)$se.fit
-                         # se = sd(resid)/sqrt(length(resid))
-  ) %>%
+  ric_data <- tibble(level = raw_data[[year]],
+                     !!grouping_var := raw_data[[as.character(grouping_var)]],                              
+                      resid  = residuals(fit, type = 'response')) %>%
     left_join(idx, by = 'level') %>%
-    mutate(implied = if (grepl("log", formula(fit)[2])) {
-      stan_unscaled * exp(resid)
-    } else {
-      stan_unscaled + resid
-    },
-    # lower_log  = log(implied) - 1.96 * se,
-    # upper_log = log(implied) + 1.96 * se
-    # lower_log  = log(implied - 1.96 * se),
-    # upper_log = log(implied + 1.96 * se)
-    ) %>%
-    group_by(group, level) %>%
-    summarise(implied = mean(implied),
-              idx_abs = mean(stan_unscaled),
-              n=length(resid),
-              .groups = 'drop_last')   %>%
-    mutate(base_idx = mean(log(idx_abs)),
-           base_imp = mean(log(implied)),
-           imp_scaled = exp(log(implied) - base_imp),
+    mutate(implied = case_when(grepl("log", formula(fit)[2]) ~ exp(resid + log(stan_unscaled)),
+                           TRUE ~ resid + stan_unscaled)) %>% 
+    group_by(!!grouping_var) %>%    
+    mutate(base_imp = exp(mean(log(mean(implied)))),
+           imp_scaled = implied / base_imp,
            # lower_scaled = exp(lower_log - base_imp),
            # upper_scaled = exp(upper_log - base_imp),
-           idx_scaled = exp(log(idx_abs) - base_idx),
-           Num = sum(n, na.rm = TRUE),
-           rho=cor(implied, idx_abs, use="pairwise.complete.obs"))
+           idx_scaled = stan) %>%
+     group_by(!!grouping_var, level) %>%
+    summarise(n = n(),
+              se = sd(imp_scaled)/ sqrt(n()),
+              implied = mean(implied),
+              idx = mean(stan_unscaled),
+              imp_scaled = mean(imp_scaled),
+              idx_scaled = mean(idx_scaled)) %>%
+    mutate(Num = sum(n),
+           rho=cor(implied, idx_scaled, use="pairwise.complete.obs"))
   
   p <-   ggplot(ric_data,
                 aes(x=level,
                     y=imp_scaled))+
     geom_point(aes(size=n), alpha = 0.5)+
-    geom_line( group = 1)+
-    # geom_errorbar(aes(ymin=(implied-1.96*se),
-    #                   ymax=(implied+1.96*se)),
-    #               size=0.3,
-    #               width=0.3)+
+    geom_line()+
+    geom_errorbar(aes(ymin=(imp_scaled-1.96*se),
+                      ymax=(imp_scaled+1.96*se)),
+                  size=0.3,
+                  width=0.3)+
     geom_hline(yintercept=1,
                linetype=3,
                colour='grey')+
     geom_line(aes(y=idx_scaled, group = 1),
               col='grey')+
-    facet_wrap(~group,
+    facet_wrap(as.formula(paste("~", as.character(grouping_var))),
                ncol=2,scales='free_y')+
     labs(x='Fishing year',
          y='Index',
