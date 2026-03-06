@@ -181,23 +181,36 @@ get_terms <- function(fit, predictor = NULL){
 }
 
 
-get_preds <- function(fit){
+get_preds <- function(fit, raw_data = NULL){
   preds = predict(fit,
                   type='terms',
                   se.fit=T)
   
-  fit = as.data.frame(preds$fit)
+  fit_df = as.data.frame(preds$fit)
   
-  se.fit = as.data.frame(preds$se.fit)
+  se.fit_df = as.data.frame(preds$se.fit)
   
-  preds = cbind(fit,se.fit)
+  preds = cbind(fit_df, se.fit_df)
   
   names(preds) = c(paste('fit',
-                         names(fit),
+                         names(fit_df),
                          sep='.'),
                    paste('se.fit',
-                         names(fit),
+                         names(fit_df),
                          sep='.'))
   
-  preds
+  
+  # Add raw data to it
+  # For GLM it is stored in fit$data, for survreg it is not stored at all. 
+  if(is.null(raw_data)) {
+    raw_data <- fit$data
+  } 
+  
+  if (is.null(raw_data) && inherits(fit, "survreg")) {
+    raw_data <- eval(fit$call$data)
+  }
+  
+  preds <- as.data.frame(bind_cols(raw_data,preds))
+  
+    preds
 }

@@ -334,26 +334,18 @@ plot_bayesian_cdi2 <- function(fit,
 #' 
 #' @export
 
-plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL){
+plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compare_preds_df = NULL){
+  
+  # comparison switch
+  
+  compareOn <- !is.null(compare_preds_df)
   
   if (is.null(year)) {
     year <- get_first_term(fit = fit)
   }
   
   # Derive contribution of each term to response
-  preds <- get_preds(fit)
-  
-  # Add raw data to it
-  # For GLM it is stored in fit$ data, for survreg it is not stored at all. 
-  if(is.null(raw_data)) {
-    raw_data <- fit$data
-  } 
-  
-  if (is.null(raw_data) && inherits(fit, "survreg")) {
-    raw_data <- eval(fit$call$data)
-  }
-  
-  preds <- as.data.frame(bind_cols(raw_data,preds))
+  preds <- get_preds(fit, raw_data = raw_data)
   
   # extract terms from this formula
   terms_labels <- get_terms(fit, predictor = predictor)
@@ -379,10 +371,12 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL){
     if(is.numeric(raw_values)) {
       breaks <- pretty(raw_values, 30)
       step   <- diff(breaks[1:2])
+      labels <- breaks + (step / 2)
+      breaks <- c(breaks, max(breaks) + step)
       
       levels <- cut(raw_values, 
-                    breaks = c(breaks, max(breaks) + step), 
-                    labels = breaks + (step / 2), 
+                    breaks = breaks, 
+                    labels = labels, 
                     include.lowest = TRUE)
     } else {
       levels <- raw_values
@@ -410,6 +404,34 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL){
       
     }
     
+    if(compareOn & term_stripped %in% names(compare_preds_df)){
+      
+      raw_values_last <- compare_preds_df[[term_stripped]]
+      
+      # Numeric terms are cut into factors 
+      if(is.numeric(raw_values_last)) {
+        
+        levels_last <- cut(raw_values_last, 
+                           breaks = breaks, 
+                           labels = labels, 
+                           include.lowest = TRUE)
+      } else {
+        levels_last <- raw_values
+      }
+      
+      coeffs_last <- compare_preds_df %>%
+        group_by(term = !!levels_last) %>%  
+        summarise(
+          coef = mean(!!fit_colname),
+          se   = mean(!!se_colname)
+        ) %>%
+        mutate (
+          term = factor(term, levels = levels(coeffs$term), ordered = TRUE),
+          lower = coef - (1.96 * se),
+          upper = coef + (1.96 * se)
+        )
+    }
+    
     # 1. Coefficients  Plot
     #_____________________________________________________________________________
     
@@ -435,12 +457,12 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL){
     # No x-labels for vessel_key
     x_labels <- if(grepl('vessel_key', term_label, ignore.case=TRUE)){
       NULL
-    }  else if(length(levels(levels)) > 15) {
-      # Downsample labels for continuous vars otherwise they overlap, the logic is to keep every n-th label where n = original no of levels/10
-      function(x) {
-        x[seq_along(x) %% max(1, round(length(x) / 10)) != 1] <- ""
-        return(x)
-      }
+      # }  else if(length(levels(levels)) > 15) {
+      #   # Downsample labels for continuous vars otherwise they overlap, the logic is to keep every n-th label where n = original no of levels/10
+      #   function(x) {
+      #     x[seq_along(x) %% max(1, round(length(x) / 10)) != 1] <- ""
+      #     return(x)
+      #   }
     } else waiver()
     
     
@@ -454,10 +476,20 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL){
       geom_segment(aes(x = as.numeric(term) - 0.05, xend = as.numeric(term) + 0.05, 
                        y = exp(upper), yend = exp(upper))) +
       geom_hline(yintercept = 1, linetype = "dashed")+
+      
+      # Conditional block to display coeffs for a model to be compared with (e.g. last year)
+      { if (compareOn & term_stripped %in% names(compare_preds_df)) {
+        geom_point(data = coeffs_last,
+                   aes(x = term, y=exp(coef)),
+                   shape = 17, size = 2, color = 'palevioletred4')
+      }} +
+      
       scale_y_log10() +
-      scale_x_discrete(labels = x_labels, position = 'top') +
-      theme_cowplot() +
-      background_grid(major = "xy", minor = "none") +
+      scale_x_discrete(drop = FALSE,
+                       labels = x_labels, 
+                       position = 'top') +
+      theme_bw() +
+      background_grid(major = "x", minor = "none") +
       labs(y = 'Coefficient', x = NULL) +
       dynamic_theme +
       theme(
@@ -482,10 +514,11 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL){
       geom_point(pch = 1) +
       scale_size_identity() +
       scale_x_discrete(labels = x_labels) +
-      theme_cowplot() +
+      theme_bw() +
       background_grid(major = "xy", minor = "none") +
       labs(x = term_stripped, y = year) +
-      dynamic_theme 
+      dynamic_theme +
+      theme(axis.line = element_line(colour = "black", linewidth = 0.8))
     
     
     # 3. Influence
@@ -510,26 +543,91 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL){
              trend = trend) %>%
       relocate(Term, .after = level)
     
+    if (compareOn & term_stripped %in% names(compare_preds_df)){
+      
+      infl_last <- compare_preds_df %>%
+        group_by(level = !!sym(year)) %>%
+        summarise(Influence = exp(mean(!!sym(fit_colname)))) 
+      x_min_last <- min(infl_last$Influence)
+      x_max_last <- max(infl_last$Influence)
+    }
     
     p3 <- ggplot(infl, aes(x = Influence, y = level)) +
       geom_hline(aes(yintercept = level), color = "grey", linewidth = 0.5) +
       geom_vline(xintercept = 1, linetype = "dashed") +
-      geom_path(group = 1) +                    # Connects the dots in the order of the data
+      
+      # Conditional block to display coeffs for a model to be compared with (e.g. last year)
+      { if (compareOn & term_stripped %in% names(compare_preds_df)) {
+        list(
+          # Outer shaded rectangle (+/- 0.05 padding)
+          annotate("rect", 
+                   xmin = x_min_last - 0.05, xmax = x_max_last + 0.05, 
+                   ymin = -Inf, ymax = Inf, 
+                   fill = "grey90", alpha = 0.5),
+          
+          # Inner shaded rectangle (exact range)
+          annotate("rect", 
+                   xmin = x_min_last, xmax = x_max_last, 
+                   ymin = -Inf, ymax = Inf, 
+                   fill = "grey80", alpha = 0.5),
+          
+          geom_point(data = infl_last,
+                     shape = 16, size = 3, color = 'palevioletred4'),
+          geom_line(data = infl_last, group = 1, linetype = 'dashed', color = 'palevioletred4')  
+        )
+      }} +
+      
+      geom_line(group = 1) +                    # Connects the dots in the order of the data
       geom_point(size = 3, pch = 16) +
       scale_x_continuous(labels = scales::label_number(accuracy = 0.01), expand = expansion(mult = c(0.2, 0.2))) +
       scale_y_discrete( position = "right") +
       labs(x = "Influence", y = NULL)+
-      theme_cowplot() +
+      theme_bw() +
+      background_grid(major = "y", minor = "none") +
       theme(
         panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.8)
       )
     
     
     pv <- ggplot() + theme_void()
+    
+    # Legend for comparison plot
+    
+    if(compareOn & term_stripped %in% names(compare_preds_df)) {
+      
+      labels = c("Current", 
+                 paste("Previous update to", max(as.numeric(as.character(infl_last$level)))),
+                 "Range of previous update", 
+                 "Range of \n previous update +5%")
+      
+      pv <- ggplot() +
+        # Row 1: Current
+        annotate("segment", x = 5, xend = 15, y = 50, yend = 50, color = "black", linetype = "solid") +
+        annotate("point", x = 10, y = 50, shape = 16, size = 2, color = "black") +
+        annotate("point", x = 3, y = 50, shape = 2, size = 2, color = "black") +
+        
+        # Row 2: Previous
+        annotate("segment", x = 5, xend = 15, y = 40, yend = 40, color = "brown", linetype = "dotted") +
+        annotate("point", x = 10, y = 40, shape = 16, size = 2, color = "brown") +
+        annotate("point", x = 3, y = 40, shape = 17, size = 2, color = "brown") +
+        
+        # Row 3 & 4: Ranges
+        annotate("point", x = 10, y = 30, shape = 15, size = 6, color = "grey80", alpha = 0.5) +
+        annotate("point", x = 10, y = 20, shape = 15, size = 6, color = "grey90", alpha = 0.5) +
+        
+        # Text Labels
+        annotate("text", x = 16, y = seq(from = 50, to = 20, by = -10), label = labels, hjust = 0, size = 4) +
+        
+        
+        coord_cartesian(xlim = c(0, 60), ylim = c(0, 60), expand = FALSE) +
+        
+        theme_void() 
+    }
+    
     combined_plot <- p1 + pv + p2 + p3 + plot_layout(nrow = 2, ncol = 2, heights = c(1, 2), widths = c(2, 1)) &
       theme(
-        axis.title = element_text(size = 14), 
-        axis.text = element_text(size = 14),  
+        # axis.title = element_text(size = 14), 
+        #  axis.text = element_text(size = 14),  
         plot.margin = margin(0, 0, 0, 0)  
       )
     
