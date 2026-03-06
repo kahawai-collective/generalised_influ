@@ -416,7 +416,7 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
                            labels = labels, 
                            include.lowest = TRUE)
       } else {
-        levels_last <- raw_values
+        levels_last <- raw_values_last
       }
       
       coeffs_last <- compare_preds_df %>%
