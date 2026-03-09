@@ -334,24 +334,30 @@ plot_bayesian_cdi2 <- function(fit,
 #' 
 #' @export
 
-plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compare_preds_df = NULL){
+plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compare_preds_list = NULL){
   
   # comparison switch
   
-  compareOn <- !is.null(compare_preds_df)
+  compareOn <- !is.null(compare_preds_list)
+  
+  if (compareOn) compare_preds_df <- compare_preds_list$preds
   
   if (is.null(year)) {
     year <- get_first_term(fit = fit)
   }
   
   # Derive contribution of each term to response
-  preds <- get_preds(fit, raw_data = raw_data)
+  preds_list <- get_preds(fit, raw_data = raw_data)
   
-  # extract terms from this formula
-  terms_labels <- get_terms(fit, predictor = predictor)
+  # Extract components from the preds list
+  preds            <- preds_list$preds
+  V                <- preds_list$V
+  X_centered       <- preds_list$X_centered
+  assigns          <- preds_list$assign
+  all_model_terms  <- preds_list$terms
   
   # exclude year from terms
-  terms_labels <- setdiff(terms_labels, year)
+  terms_labels <- setdiff(all_model_terms, year)
   
   result <- setNames(lapply(terms_labels, function(term_label) {
     
@@ -359,6 +365,13 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
     fit_colname <- sym(paste0('fit.', term_label))
     se_colname  <- sym(paste0('se.fit.', term_label))
     
+    # Identify model matrix columns for this specific term
+    match_idx <- which(all_model_terms == term_label)
+    cols <- which(assigns == match_idx)
+    
+    # Extract the sub model matrix for this term
+    Xi_centered <- X_centered[, cols, drop = FALSE]
+    Vi <- V[cols, cols, drop = FALSE]
     
     # Define levels of term on which coefficient and distribution plots will be based
     # This is done by search for each column name in the data as a whole word in the
@@ -383,10 +396,17 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
     }
     
     coeffs <- preds %>%
+      mutate(row_id = row_number()) %>%
       group_by(term = !!levels) %>%  
       summarise(
         coef = mean(!!fit_colname),
-        se   = mean(!!se_colname)
+        se   = {
+          # Calculate the average design matrix row for this bin
+          X_bin_avg <- colMeans(Xi_centered[row_id, , drop = FALSE])
+          # Project the covariance matrix: sqrt(avg_row %*% V %*% avg_row_T)
+          sqrt(t(X_bin_avg) %*% Vi %*% X_bin_avg)
+        },
+        .groups = "drop"
       ) %>%
       mutate (
         lower = coef - (1.96 * se),
@@ -406,7 +426,12 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
     
     if(compareOn & term_stripped %in% names(compare_preds_df)){
       
+      # Extract components from the comparison list
       raw_values_last <- compare_preds_df[[term_stripped]]
+      comp_V    <- compare_preds_list$V
+      comp_X    <- compare_preds_list$X_centered
+      comp_assign  <- compare_preds_list$assign
+      comp_terms <- compare_preds_list$terms
       
       # Numeric terms are cut into factors 
       if(is.numeric(raw_values_last)) {
@@ -419,11 +444,24 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
         levels_last <- raw_values_last
       }
       
+      # Identify columns in the comparison model matrix
+      comp_match_idx <- which(comp_terms == term_label)
+      comp_cols <- which(comp_assign == comp_match_idx)
+      # Extract the sub model matrix for this term
+      comp_Xi_centered <- X_centered[, comp_cols, drop = FALSE]
+      comp_Vi <- comp_V[comp_cols, comp_cols, drop = FALSE]
+      
+      
       coeffs_last <- compare_preds_df %>%
+        mutate(row_id = row_number()) %>%
         group_by(term = !!levels_last) %>%  
         summarise(
           coef = mean(!!fit_colname),
-          se   = mean(!!se_colname)
+          se = {
+            X_bin_avg <- colMeans(comp_Xi_centered[row_id, , drop = FALSE])
+            as.numeric(sqrt(t(X_bin_avg) %*% comp_Vi %*% X_bin_avg))
+          },
+          .groups = "drop"
         ) %>%
         mutate (
           term = factor(term, levels = levels(coeffs$term), ordered = TRUE),

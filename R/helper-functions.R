@@ -184,7 +184,8 @@ get_terms <- function(fit, predictor = NULL){
 get_preds <- function(fit, raw_data = NULL){
   preds = predict(fit,
                   type='terms',
-                  se.fit=T)
+                  se.fit=
+                    T)
   
   fit_df = as.data.frame(preds$fit)
   
@@ -212,5 +213,15 @@ get_preds <- function(fit, raw_data = NULL){
   
   preds <- as.data.frame(bind_cols(raw_data,preds))
   
-    preds
+  X_raw <- model.matrix(fit)
+  
+  # Return a list containing everything needed for comparison and SE calculations
+  list(
+    preds = preds,
+    V = vcov(fit),
+    X_centered = sweep(X_raw, 2, colMeans(X_raw)),
+    assign = attr(X_raw, "assign"),
+    terms = get_terms(fit)
+  )
+  
 }
