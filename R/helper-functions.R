@@ -180,7 +180,13 @@ get_terms <- function(fit, predictor = NULL){
   return(terms_labels)
 }
 
-
+#' Extract model predictions by term
+#' 
+#' @param fit fitted model object
+#' @return A list containing preds dataframe and other stuff
+#' @export
+#' 
+#' 
 get_preds <- function(fit, raw_data = NULL){
   preds = predict(fit,
                   type='terms',

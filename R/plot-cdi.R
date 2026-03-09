@@ -424,37 +424,37 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
       
     }
     
-    if(compareOn & term_stripped %in% names(compare_preds_df)){
+    if(compareOn && term_stripped %in% names(compare_preds_df)){
       
       # Extract components from the comparison list
-      raw_values_last <- compare_preds_df[[term_stripped]]
-      comp_V    <- compare_preds_list$V
-      comp_X    <- compare_preds_list$X_centered
-      comp_assign  <- compare_preds_list$assign
-      comp_terms <- compare_preds_list$terms
+      comp_raw_values    <- compare_preds_df[[term_stripped]]
+      comp_V             <- compare_preds_list$V
+      comp_X_centered    <- compare_preds_list$X_centered
+      comp_assign        <- compare_preds_list$assign
+      comp_terms         <- compare_preds_list$terms
       
       # Numeric terms are cut into factors 
-      if(is.numeric(raw_values_last)) {
+      if(is.numeric(comp_raw_values)) {
         
-        levels_last <- cut(raw_values_last, 
+        comp_levels <- cut(comp_raw_values, 
                            breaks = breaks, 
                            labels = labels, 
                            include.lowest = TRUE)
       } else {
-        levels_last <- raw_values_last
+        comp_levels <- comp_raw_values
       }
       
       # Identify columns in the comparison model matrix
       comp_match_idx <- which(comp_terms == term_label)
       comp_cols <- which(comp_assign == comp_match_idx)
       # Extract the sub model matrix for this term
-      comp_Xi_centered <- X_centered[, comp_cols, drop = FALSE]
+      comp_Xi_centered <- comp_X_centered[, comp_cols, drop = FALSE]
       comp_Vi <- comp_V[comp_cols, comp_cols, drop = FALSE]
       
       
-      coeffs_last <- compare_preds_df %>%
+      comp_coeffs <- compare_preds_df %>%
         mutate(row_id = row_number()) %>%
-        group_by(term = !!levels_last) %>%  
+        group_by(term = !!comp_levels) %>%  
         summarise(
           coef = mean(!!fit_colname),
           se = {
@@ -516,10 +516,13 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
       geom_hline(yintercept = 1, linetype = "dashed")+
       
       # Conditional block to display coeffs for a model to be compared with (e.g. last year)
-      { if (compareOn & term_stripped %in% names(compare_preds_df)) {
-        geom_point(data = coeffs_last,
+      { if (compareOn && term_stripped %in% names(compare_preds_df)) {
+        list(
+          geom_point(data = comp_coeffs,
                    aes(x = term, y=exp(coef)),
-                   shape = 17, size = 2, color = 'palevioletred4')
+                   shape = 17, size = 2, color = 'palevioletred4'),
+          geom_errorbar(data = comp_coeffs, aes(ymin = exp(lower), ymax = exp(upper)), color = 'palevioletred4', width = 0) 
+        )
       }} +
       
       scale_y_log10() +
@@ -581,13 +584,13 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
              trend = trend) %>%
       relocate(Term, .after = level)
     
-    if (compareOn & term_stripped %in% names(compare_preds_df)){
+    if (compareOn && term_stripped %in% names(compare_preds_df)){
       
-      infl_last <- compare_preds_df %>%
+      comp_infl <- compare_preds_df %>%
         group_by(level = !!sym(year)) %>%
         summarise(Influence = exp(mean(!!sym(fit_colname)))) 
-      x_min_last <- min(infl_last$Influence)
-      x_max_last <- max(infl_last$Influence)
+      comp_x_min <- min(comp_infl$Influence)
+      comp_x_max <- max(comp_infl$Influence)
     }
     
     p3 <- ggplot(infl, aes(x = Influence, y = level)) +
@@ -595,23 +598,23 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
       geom_vline(xintercept = 1, linetype = "dashed") +
       
       # Conditional block to display coeffs for a model to be compared with (e.g. last year)
-      { if (compareOn & term_stripped %in% names(compare_preds_df)) {
+      { if (compareOn && term_stripped %in% names(compare_preds_df)) {
         list(
           # Outer shaded rectangle (+/- 0.05 padding)
           annotate("rect", 
-                   xmin = x_min_last - 0.05, xmax = x_max_last + 0.05, 
+                   xmin = comp_x_min - 0.05, xmax = comp_x_max + 0.05, 
                    ymin = -Inf, ymax = Inf, 
                    fill = "grey90", alpha = 0.5),
           
           # Inner shaded rectangle (exact range)
           annotate("rect", 
-                   xmin = x_min_last, xmax = x_max_last, 
+                   xmin = comp_x_min, xmax = comp_x_max, 
                    ymin = -Inf, ymax = Inf, 
                    fill = "grey80", alpha = 0.5),
           
-          geom_point(data = infl_last,
+          geom_point(data = comp_infl,
                      shape = 16, size = 3, color = 'palevioletred4'),
-          geom_line(data = infl_last, group = 1, linetype = 'dashed', color = 'palevioletred4')  
+          geom_line(data = comp_infl, group = 1, linetype = 'dashed', color = 'palevioletred4')  
         )
       }} +
       
@@ -631,10 +634,10 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
     
     # Legend for comparison plot
     
-    if(compareOn & term_stripped %in% names(compare_preds_df)) {
+    if(compareOn && term_stripped %in% names(compare_preds_df)) {
       
       labels = c("Current", 
-                 paste("Previous update to", max(as.numeric(as.character(infl_last$level)))),
+                 paste("Previous update to", max(as.numeric(as.character(comp_infl$level)))),
                  "Range of previous update", 
                  "Range of \n previous update +5%")
       

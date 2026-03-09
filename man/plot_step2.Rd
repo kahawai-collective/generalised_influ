@@ -4,7 +4,7 @@
 \alias{plot_step2}
 \title{This requires that all steps be run using brms and then provided as a list of model fits.}
 \usage{
-plot_step2(step_df)
+plot_step2(step_df, compare_step_df = NULL)
 }
 \arguments{
 \item{step_df}{dataframe generated weith get_step() function}
