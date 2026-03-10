@@ -531,7 +531,7 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
                        position = 'top') +
       theme_bw() +
       background_grid(major = "x", minor = "none") +
-      labs(y = 'Coefficient', x = NULL) +
+      labs(y = 'Effect', x = NULL) +
       dynamic_theme +
       theme(
         panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.8)

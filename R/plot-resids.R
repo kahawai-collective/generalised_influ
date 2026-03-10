@@ -181,13 +181,19 @@ plot_RIC <- function(fit, grouping_var = 'stat_area', add.rho = TRUE){
                      !!grouping_var := raw_data[[as.character(grouping_var)]],                              
                       resid  = residuals(fit, type = 'response')) %>%
     left_join(idx, by = 'level') %>%
-    mutate(implied = case_when(grepl("log", formula(fit)[2]) ~ exp(resid + log(stan_unscaled)),
-                           TRUE ~ resid + stan_unscaled)) %>% 
+    mutate(implied = if (grepl("log", formula(fit)[2])) {
+      exp(resid + log(stan_unscaled))
+    } else {
+      resid + stan_unscaled
+    }) %>%
     group_by(!!grouping_var) %>%    
-    mutate(base_imp = exp(mean(log(mean(implied)))),
+    mutate(base_imp = {
+      # Calculate arithmetic mean for each year 
+      yearly_means <- tapply(implied, level, mean)
+      # Calculate geometric mean of those yearly means
+      exp(mean(log(yearly_means)))
+    },
            imp_scaled = implied / base_imp,
-           # lower_scaled = exp(lower_log - base_imp),
-           # upper_scaled = exp(upper_log - base_imp),
            idx_scaled = stan) %>%
      group_by(!!grouping_var, level) %>%
     summarise(n = n(),
