@@ -150,7 +150,7 @@ get_unstandardised <- function(fit, year = NULL, rescale = 1, predictor = NULL) 
 #' @import dplyr
 #' @export
 #' 
-get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, do_plot = FALSE, pred_grid = NULL, predictor = NULL, ...) {
+get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, pred_grid = NULL, predictor = NULL, ...) {
   
   if  (!inherits(fit, c("sdmTMB", "glm", "survreg", "brmsfit"))) stop("This model class is not supported.")
   

@@ -94,7 +94,7 @@ plot_step2 <- function(step_df, compare_step_df = NULL){
         LineType = case_when(
           as.numeric(Model) == i     ~ "Current",
           as.numeric(Model) == i - 1 ~ "Previous",
-          TRUE                       ~ "Historical"
+          TRUE                       ~ "Reduced"
         )
       )
   })%>%bind_rows()
@@ -109,40 +109,61 @@ plot_step2 <- function(step_df, compare_step_df = NULL){
                   pivot_longer(-Year, names_to = "Model", values_to = "Index") %>%
                   mutate(Model = factor(Model, levels = model_names),                        # Keeps them in order
                          FacetTarget = Model,
-                         LineType = 'Compare'))
-    
+                         LineType = 'Compare')) 
   }
   # End of comparison logic
-  df_all_steps$LineType <- factor(df_all_steps$LineType, levels = c("Historical",  "Previous", "Compare", "Current")) 
+  legend_labels <- c(
+      "Reduced" = "Reduced models",
+      "Previous"   = "Before adding current predictor",
+      "Compare"    = paste("Previous update to", max(as.numeric(as.character(compare_step_df$level)))),
+      "Current"    = "Current"
+    )
+  
+  df_all_steps$LineType <- factor(df_all_steps$LineType, levels = names(legend_labels)) 
   
   p <- ggplot(df_all_steps %>% arrange(LineType), aes(x = Year, y = Index, group = interaction(Model, LineType))) +
-    geom_line(aes(color = LineType, linetype = LineType == "Previous"), linewidth = 0.5 ) +
-    scale_color_manual(values = c("Current" = "royalblue", "Compare" = 'palevioletred4', "Historical" = "grey85", "Previous" = "black" )) +
+    geom_line(aes(color = LineType, linetype = LineType), linewidth = 0.5 ) +
+    scale_color_manual(values = c("Current" = "royalblue", "Compare" = 'palevioletred4', "Reduced" = "grey85", "Previous" = "black" ),
+                       labels = legend_labels) +
+    scale_linetype_manual(values = c("Current" = 1, 
+                                     "Compare" = 1, 
+                                     "Reduced" = 1, 
+                                     "Previous" = 2),
+                          labels = legend_labels) +
     geom_point(data = filter(df_all_steps, LineType == "Current"), 
                color = "royalblue") +
     
     
     geom_label(data = df_all_steps %>%
                  group_by(FacetTarget) %>%
-                 summarize(Model = last(Model)),
-               aes(label = FacetTarget, x = -Inf, y = -Inf),
+                 summarize(Model = last(Model),
+                           
+                           # Following mutate logic is all about location of facet labels
+                           is_upward = last(Index) > first(Index),
+                           # Proximity Check: Is the start of the series closer to bottom or top of y-range?
+                           is_starting_low = mean(head(Index)) < max(Index) - mean(head(Index)),
+                           # If it starts low and goes up -> Place at TOP (y = Inf), otherwise place at BOTTOM (y = -Inf)
+                           y_pos = if_else(is_starting_low & is_upward, Inf, -Inf),
+                           v_just = if_else(y_pos == Inf, 1.1, -0.1),
+                           ),
+               aes(label = FacetTarget, x = -Inf, y = y_pos, vjust = v_just),
                inherit.aes = FALSE,
                # Fixed alignment settings:
                hjust = 0,
-               vjust = 0,
                label.padding = unit(1, "lines"),
                label.size = NA,
                fill = NA,
                size = 3.5) +
     labs(x = "Fishing year", y = "Index") +
-    scale_y_continuous(limits = c(0.6, NA), 
+    scale_y_continuous(limits = c(0, NA), 
                        expand = expansion(mult = c(0, 0.1)), 
                        guide = guide_axis(check.overlap = TRUE),
                        breaks = function(x) unique(pretty(x)[pretty(x) != min(x)]) )+
     facet_wrap(~FacetTarget, ncol = 1) +
     theme_cowplot() +
     theme(
-      legend.position = "none",
+      legend.position = ifelse(is.null(compare_step_df), "none", "top"),
+      legend.title = element_blank(),
       strip.background = element_blank(), 
       strip.text = element_blank(),       
       panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5), 

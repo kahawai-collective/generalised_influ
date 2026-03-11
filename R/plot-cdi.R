@@ -381,7 +381,7 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
     raw_values <- preds[[term_stripped]]
     
     # Numeric terms are cut into factors 
-    if(is.numeric(raw_values)) {
+    if(is.numeric(raw_values) && length(unique(raw_values))>15) {
       breaks <- pretty(raw_values, 30)
       step   <- diff(breaks[1:2])
       labels <- breaks + (step / 2)
@@ -414,7 +414,7 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
       )
     
     # Reorder levels according to coefficients for factors
-    if(is.factor(raw_values)) {
+    if(is.factor(raw_values) && !(grepl('month', term_label))) {
       coeffs <- coeffs %>%
         arrange(coef) 
       
@@ -620,7 +620,11 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
       
       geom_line(group = 1) +                    # Connects the dots in the order of the data
       geom_point(size = 3, pch = 16) +
-      scale_x_continuous(labels = scales::label_number(accuracy = 0.01), expand = expansion(mult = c(0.2, 0.2))) +
+      scale_x_continuous(limits = function(x) {
+        c(min(pretty(x), 0.8), 
+          max(pretty(x), 1.2))
+      },
+      labels = scales::label_number(accuracy = 0.01)) +
       scale_y_discrete( position = "right") +
       labs(x = "Influence", y = NULL)+
       theme_bw() +
