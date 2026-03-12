@@ -381,7 +381,7 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
     raw_values <- preds[[term_stripped]]
     
     # Numeric terms are cut into factors 
-    if(is.numeric(raw_values) && length(unique(raw_values))>15) {
+    if(is.numeric(raw_values) && (!all(raw_values %% 1 == 0) | length(unique(raw_values))>10)) {
       breaks <- pretty(raw_values, 30)
       step   <- diff(breaks[1:2])
       labels <- breaks + (step / 2)
@@ -392,7 +392,7 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
                     labels = labels, 
                     include.lowest = TRUE)
     } else {
-      levels <- raw_values
+      levels <- factor(raw_values)
     }
     
     coeffs <- preds %>%
@@ -424,7 +424,7 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
       
     }
     
-    if(compareOn && term_stripped %in% names(compare_preds_df)){
+    if(compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)){
       
       # Extract components from the comparison list
       comp_raw_values    <- compare_preds_df[[term_stripped]]
@@ -434,14 +434,14 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
       comp_terms         <- compare_preds_list$terms
       
       # Numeric terms are cut into factors 
-      if(is.numeric(comp_raw_values)) {
+      if(is.numeric(comp_raw_values) && (!all(comp_raw_values %% 1 == 0) | length(unique(comp_raw_values))>10)) {
         
         comp_levels <- cut(comp_raw_values, 
                            breaks = breaks, 
                            labels = labels, 
                            include.lowest = TRUE)
       } else {
-        comp_levels <- comp_raw_values
+        comp_levels <- factor(comp_raw_values)
       }
       
       # Identify columns in the comparison model matrix
@@ -516,7 +516,7 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
       geom_hline(yintercept = 1, linetype = "dashed")+
       
       # Conditional block to display coeffs for a model to be compared with (e.g. last year)
-      { if (compareOn && term_stripped %in% names(compare_preds_df)) {
+      { if (compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)) {
         list(
           geom_point(data = comp_coeffs,
                    aes(x = term, y=exp(coef)),
@@ -525,7 +525,19 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
         )
       }} +
       
-      scale_y_log10() +
+      # Trying to place enough labels on the y-scale
+      # Solution 1:
+      scale_y_log10(breaks = scales::breaks_extended(n = 9)) +
+      
+      # Solution 2:
+      # { 
+      #   if (max(exp(coeffs$coef)) - min(exp(coeffs$coef)) > 1) {
+      #     scale_y_log10(breaks = scales::breaks_log(n = 8, base = 1.2), 
+      #                   labels = scales::label_number(accuracy = 0.01))
+      #   } else {
+      #     scale_y_log10(n.breaks = 8)
+      #   }
+      # } +
       scale_x_discrete(drop = FALSE,
                        labels = x_labels, 
                        position = 'top') +
@@ -554,7 +566,7 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
     p2 <- ggplot(distrs, aes(x = term, y = focus, size = sqrt(prop) * 20)) +
       geom_point(pch = 1) +
       scale_size_identity() +
-      scale_x_discrete(labels = x_labels) +
+      scale_x_discrete(drop = FALSE, labels = x_labels) +
       theme_bw() +
       background_grid(major = "xy", minor = "none") +
       labs(x = term_stripped, y = year) +
@@ -584,7 +596,7 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
              trend = trend) %>%
       relocate(Term, .after = level)
     
-    if (compareOn && term_stripped %in% names(compare_preds_df)){
+    if (compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)){
       
       comp_infl <- compare_preds_df %>%
         group_by(level = !!sym(year)) %>%
@@ -598,7 +610,7 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
       geom_vline(xintercept = 1, linetype = "dashed") +
       
       # Conditional block to display coeffs for a model to be compared with (e.g. last year)
-      { if (compareOn && term_stripped %in% names(compare_preds_df)) {
+      { if (compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)) {
         list(
           # Outer shaded rectangle (+/- 0.05 padding)
           annotate("rect", 
@@ -638,7 +650,7 @@ plot_cdi <- function(fit, year = NULL, raw_data = NULL, predictor = NULL, compar
     
     # Legend for comparison plot
     
-    if(compareOn && term_stripped %in% names(compare_preds_df)) {
+    if(compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)) {
       
       labels = c("Current", 
                  paste("Previous update to", max(as.numeric(as.character(comp_infl$level)))),
