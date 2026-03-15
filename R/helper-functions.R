@@ -187,7 +187,13 @@ get_terms <- function(fit, predictor = NULL){
 #' @export
 #' 
 #' 
-get_preds <- function(fit, raw_data = NULL){
+get_preds <- function(fit, raw_data = NULL, year = NULL){
+  
+  if (is.null(year)) {
+    year <- get_first_term(fit = fit)
+  }
+  
+  # Derive contribution of each term to response
   preds = predict(fit,
                   type='terms',
                   se.fit=
@@ -227,7 +233,8 @@ get_preds <- function(fit, raw_data = NULL){
     V = vcov(fit),
     X_centered = sweep(X_raw, 2, colMeans(X_raw)),
     assign = attr(X_raw, "assign"),
-    terms = get_terms(fit)
+    terms = get_terms(fit),
+    year = year
   )
   
 }
