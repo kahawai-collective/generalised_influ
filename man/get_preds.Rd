@@ -4,7 +4,7 @@
 \alias{get_preds}
 \title{Extract model predictions by term}
 \usage{
-get_preds(fit, raw_data = NULL)
+get_preds(fit, raw_data = NULL, year = NULL)
 }
 \arguments{
 \item{fit}{fitted model object}

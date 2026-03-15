@@ -4,13 +4,7 @@
 \alias{plot_cdi}
 \title{Plot Coefficient Distribution and Influence (CDI)}
 \usage{
-plot_cdi(
-  fit,
-  year = NULL,
-  raw_data = NULL,
-  predictor = NULL,
-  compare_preds_list = NULL
-)
+plot_cdi(preds_list, compare_preds_list = NULL)
 }
 \arguments{
 \item{fit}{A fitted model object (e.g., from `glm` or `gam`).}

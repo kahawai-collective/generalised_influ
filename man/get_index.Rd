@@ -9,7 +9,6 @@ get_index(
   year = NULL,
   probs = c(0.025, 0.975),
   rescale = 1,
-  do_plot = FALSE,
   pred_grid = NULL,
   predictor = NULL,
   ...
@@ -24,9 +23,9 @@ get_index(
 
 \item{rescale}{How to re-scale the series. Choose from "raw" to retain the raw series, "unstandardised" to re-scale to the geometric mean of the unstandardised series, or a number to re-scale by.}
 
-\item{do_plot}{Return a \code{ggplot} object instead of a \code{data.frame}.}
-
 \item{...}{Additional parameters passed to \code{fitted}.}
+
+\item{do_plot}{Return a \code{ggplot} object instead of a \code{data.frame}.}
 }
 \value{
 a \code{data.frame} or a \code{ggplot} object.
