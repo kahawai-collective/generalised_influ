@@ -66,7 +66,7 @@ plot_index <- function(index,
     scale_shape_manual(values = c('Standardised' = 16, 'Unstandardised' = 1))+
     scale_colour_manual(values = c('Standardised' = fill, 'Unstandardised' = "grey40")) +
     scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-    theme_bw() +
+    theme_cowplot() +
     theme(
       axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
       legend.position = "inside",

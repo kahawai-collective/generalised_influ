@@ -144,23 +144,12 @@ plot_predicted_residuals <- function(fit, trend = "loess", type = "ordinary") {
 }
 
 
-###################################################################################
-# Oxana draft code 5 March 2026
-###################################################################################
-
-# fit <- abundance_gamma                  #glm fit$model
-# fit <- select_abun                        #survreg fit$model
-# fit <- spatiotemporal                    
-# fit <- abundance_brms                   #fit$data
-# fit <- abundance_lognorm
-# fit <- select_occur
-
 #' Plot Residual Implied Index
 #'
 #' @param fit A fitted model object
 #' @param grouping_var A character string specifying the column name to group by. 
 #' Defaults to 'stat_area'.
-#'
+#' @importFrom splines ns
 #' @return A ggplot2 object showing the implied vs. scaled indices.
 #' @export
 
@@ -209,7 +198,7 @@ plot_RIC <- function(fit, grouping_var = 'stat_area', add.rho = TRUE){
                 aes(x=level,
                     y=imp_scaled))+
     geom_point(aes(size=n), alpha = 0.5)+
-    geom_line()+
+    geom_line(aes(group = 1))+
     geom_errorbar(aes(ymin=(imp_scaled-1.96*se),
                       ymax=(imp_scaled+1.96*se)),
                   size=0.3,

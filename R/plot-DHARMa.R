@@ -38,7 +38,7 @@ plot_DHARMares <- function(fit){
   } else diag_metrics$dharma_res <- residuals(DHARMa::simulateResiduals(fit, n = 1000, refit = FALSE, plot = FALSE, seed = 123))
   
   # Transform fitted values to ranks
-  diag_metrics%<>%
+  diag_metrics <- diag_metrics %>%
     mutate(rank_fitted =  rank(fitted, ties.method = "average")/n,
            is_outlier = factor(dharma_res == 0 | dharma_res == 1, 
                                levels = c(FALSE, TRUE)))
@@ -53,7 +53,7 @@ plot_DHARMares <- function(fit){
   
   # (1) Histogram of residuals versus uniform distribution
   d1 <- ggplot(diag_metrics) + geom_histogram(aes(x=qnorm(dharma_res),
-                                                  y = ..density..),
+                                                  y = after_stat(density)),
                                               stat='bin',
                                               binwidth=0.05,
                                               fill =NA,
@@ -62,7 +62,7 @@ plot_DHARMares <- function(fit){
          y='Density') +
     stat_function(fun = dnorm, 
                   #     args = list(min = 0, max = 1), 
-                  color = "red", size = 1)+
+                  color = "red", linewidth = 1)+
     theme_classic() +
     theme(axis.title=element_text(size=10))
   
