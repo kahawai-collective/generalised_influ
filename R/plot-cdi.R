@@ -106,6 +106,7 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
       
       # Extract components from the comparison list
       comp_raw_values    <- compare_preds_df[[term_stripped]]
+      comp_preds         <- compare_preds_list$preds
       comp_V             <- compare_preds_list$V
       comp_X_centered    <- compare_preds_list$X_centered
       comp_assign        <- compare_preds_list$assign
@@ -197,8 +198,8 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
       { if (compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)) {
         list(
           geom_point(data = comp_coeffs,
-                   aes(x = term, y=exp(coef)),
-                   shape = 17, size = 2, color = 'palevioletred4'),
+                     aes(x = term, y=exp(coef)),
+                     shape = 17, size = 2, color = 'palevioletred4'),
           geom_errorbar(data = comp_coeffs, aes(ymin = exp(lower), ymax = exp(upper)), color = 'palevioletred4', width = 0) 
         )
       }} +
@@ -241,8 +242,32 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
       
       ungroup()
     
+    if(compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)){
+      
+      comp_distrs <- comp_preds %>%
+        group_by(focus = .[[year]], term = comp_levels)  %>%
+        summarise(count = n(), .groups = "drop_last") %>%
+        
+        mutate(
+          total = sum(count),
+          prop  = count / total
+        ) %>%
+        
+        ungroup()
+    }
+    
+    
+    
     p2 <- ggplot(distrs, aes(x = term, y = focus, size = sqrt(prop) * 20)) +
       geom_point(pch = 1) +
+      
+      # Conditional block to display dists for a model to be compared with (e.g. last year)
+      { if (compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)) {
+        geom_point(data = comp_distrs,
+                   pch = 1,
+                   color = 'palevioletred4')
+      }} +
+      
       scale_size_identity() +
       scale_x_discrete(drop = FALSE, labels = x_labels) +
       theme_bw() +
@@ -342,9 +367,9 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
         annotate("point", x = 3, y = 50, shape = 2, size = 2, color = "black") +
         
         # Row 2: Previous
-        annotate("segment", x = 5, xend = 15, y = 40, yend = 40, color = "brown", linetype = "dotted") +
-        annotate("point", x = 10, y = 40, shape = 16, size = 2, color = "brown") +
-        annotate("point", x = 3, y = 40, shape = 17, size = 2, color = "brown") +
+        annotate("segment", x = 5, xend = 15, y = 40, yend = 40, color = "palevioletred4", linetype = "dotted") +
+        annotate("point", x = 10, y = 40, shape = 16, size = 2, color = "palevioletred4") +
+        annotate("point", x = 3, y = 40, shape = 17, size = 2, color = "palevioletred4") +
         
         # Row 3 & 4: Ranges
         annotate("point", x = 10, y = 30, shape = 15, size = 6, color = "grey80", alpha = 0.5) +
