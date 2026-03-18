@@ -61,14 +61,18 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
     # Numeric terms are cut into factors 
     if(is.numeric(raw_values) && (!all(raw_values %% 1 == 0) | length(unique(raw_values))>10)) {
       breaks <- pretty(raw_values, 30)
-      step   <- diff(breaks[1:2])
-      labels <- breaks + (step / 2)
-      breaks <- c(breaks, max(breaks) + step)
+      step   <- breaks[2]-breaks[1]
+      breaks  <- breaks[breaks <= max(raw_values)]
       
+      if(max(breaks) < max(raw_values)) {
+        breaks <- c(breaks, max(breaks) + step)
+      }
+      labels <- breaks[-length(breaks)] + (step / 2)
       levels <- cut(raw_values, 
                     breaks = breaks, 
                     labels = labels, 
                     include.lowest = TRUE)
+      
     } else {
       levels <- factor(raw_values)
     }
@@ -154,11 +158,12 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
     
     # Create plot theme depending on the term:
     
-    if ((grepl('month|area|cluster', term_label, ignore.case=TRUE)) | (length(levels(levels)) > 8)) {
+    if ((length(levels(levels)) > 12)) {
       
       # Vertical labels and tighter margins
       dynamic_theme <- theme(
         axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        axis.text.x.top = element_text( vjust = 0.5),
         axis.title.x = element_text(margin = margin(t = 15)) 
       )
       
@@ -170,6 +175,14 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
         axis.title.x = element_text(margin = margin(t = 10))
       )
     }
+    
+    # Create theme elements used for each of the 3 plots
+    common_theme <-  theme(
+      axis.title.x = element_text(vjust = 0),
+      panel.grid.major = element_line(linewidth = 0.2, color = "grey90"),
+      axis.line.x = element_line(colour = "black", linewidth = 0.6),
+      axis.line.y = element_line(colour = "black", linewidth = 0.6)
+    )
     
     # No x-labels for vessel_key
     x_labels <- if(grepl('vessel_key', term_label, ignore.case=TRUE)){
@@ -224,9 +237,7 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
       background_grid(major = "x", minor = "none") +
       labs(y = 'Effect', x = NULL) +
       dynamic_theme +
-      theme(
-        panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.8)
-      )
+      common_theme
     
     # 2. Distribution Plot
     #_____________________________________________________________________________
@@ -274,7 +285,7 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
       background_grid(major = "xy", minor = "none") +
       labs(x = term_stripped, y = year) +
       dynamic_theme +
-      theme(axis.line = element_line(colour = "black", linewidth = 0.8))
+      common_theme
     
     
     # 3. Influence
@@ -309,32 +320,33 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
     }
     
     p3 <- ggplot(infl, aes(x = Influence, y = level)) +
-      geom_hline(aes(yintercept = level), color = "grey", linewidth = 0.5) +
-      geom_vline(xintercept = 1, linetype = "dashed") +
       
       # Conditional block to display coeffs for a model to be compared with (e.g. last year)
+      # In the background: The two rectangles (if compareOn is TRUE)
       { if (compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)) {
         list(
           # Outer shaded rectangle (+/- 0.05 padding)
-          annotate("rect", 
-                   xmin = comp_x_min - 0.05, xmax = comp_x_max + 0.05, 
-                   ymin = -Inf, ymax = Inf, 
-                   fill = "grey90", alpha = 0.5),
-          
+          annotate("rect", xmin = comp_x_min - 0.05, xmax = comp_x_max + 0.05, 
+                   ymin = -Inf, ymax = Inf, fill = "grey90", alpha = 0.5),
           # Inner shaded rectangle (exact range)
-          annotate("rect", 
-                   xmin = comp_x_min, xmax = comp_x_max, 
-                   ymin = -Inf, ymax = Inf, 
-                   fill = "grey80", alpha = 0.5),
-          
-          geom_point(data = comp_infl,
-                     shape = 16, size = 3, color = 'palevioletred4'),
-          geom_line(data = comp_infl, group = 1, linetype = 'dashed', color = 'palevioletred4')  
+          annotate("rect", xmin = comp_x_min, xmax = comp_x_max, 
+                   ymin = -Inf, ymax = Inf, fill = "grey80", alpha = 0.5)
         )
       }} +
       
-      geom_line(group = 1) +                    # Connects the dots in the order of the data
+      # In the middle layer: Black dots and lines for current (or only) model
+      geom_vline(xintercept = 1, linetype = "dashed") +
+      geom_line(group = 1) +                   
       geom_point(size = 3, pch = 16) +
+      
+      # 3. In the foreground: Brown dots and lines for model to compare with
+      { if (compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)) {
+        list(
+          geom_line(data = comp_infl, group = 1, linetype = 'dashed', color = 'palevioletred4'),
+          geom_point(data = comp_infl, shape = 16, size = 3, color = 'palevioletred4')
+        )
+      }} +
+      
       scale_x_continuous(limits = function(x) {
         c(min(pretty(x), 0.8), 
           max(pretty(x), 1.2))
@@ -344,12 +356,20 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
       labs(x = "Influence", y = NULL)+
       theme_bw() +
       background_grid(major = "y", minor = "none") +
+      common_theme
+    
+    
+    pv <- ggplot() + 
+      geom_point(aes(x = 0, y = 0), alpha = 0) + 
+      
+      theme_minimal() + 
       theme(
-        panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.8)
+        panel.grid = element_blank(),
+        axis.title = element_blank(),
+        axis.text = element_blank(),
+        axis.line.x = element_line(colour = "black", linewidth = 0.6),
+        axis.line.y = element_line(colour = "black", linewidth = 0.6)
       )
-    
-    
-    pv <- ggplot() + theme_void()
     
     # Legend for comparison plot
     
@@ -381,7 +401,14 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
         
         coord_cartesian(xlim = c(0, 60), ylim = c(0, 60), expand = FALSE) +
         
-        theme_void() 
+        theme_minimal() + 
+        theme(
+          panel.grid = element_blank(),
+          axis.title = element_blank(),
+          axis.text = element_blank(),
+          axis.line.x = element_line(colour = "black", linewidth = 0.6),
+          axis.line.y = element_line(colour = "black", linewidth = 0.6)
+        )
     }
     
     combined_plot <- p1 + pv + p2 + p3 + plot_layout(nrow = 2, ncol = 2, heights = c(1, 2), widths = c(2, 1)) &
