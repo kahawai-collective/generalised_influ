@@ -9,8 +9,6 @@
 #' @param do_plot Return a \code{ggplot} object instead of a \code{data.frame}.
 #' @param ... Additional parameters passed to \code{fitted}.
 #' @return a \code{data.frame} or a \code{ggplot} object.
-#' @importFrom stats fitted
-#' @importFrom brms is.brmsfit
 #' @import ggplot2
 #' @import patchwork
 #' @import dplyr

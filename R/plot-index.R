@@ -9,8 +9,6 @@
 #' @param rescale the index of the series to rescale to. If set to NULL then no rescaling is done.
 #' @param show_unstandardised show the unstandardised series or not.
 #' @return a \code{ggplot} object.
-#' @importFrom stats fitted
-#' @import brms
 #' @import ggplot2
 #' @import dplyr
 #' @import tidyr

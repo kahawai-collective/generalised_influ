@@ -5,7 +5,6 @@
 #' @param rescale How to re-scale the series. Choose from "raw" to retain the raw unstandardised series, or a number to re-scale by. 
 #' @param predictor =1 or =2 if a hurdle model is used. If NULL, combined index will be returned.
 #' @return a \code{data.frame} or a \code{ggplot} object.
-#' @importFrom brms is.brmsfit
 #' @import dplyr
 #' @export
 #' 
@@ -121,9 +120,9 @@ get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, pr
   
   if  (!inherits(fit, c("sdmTMB", "glm", "survreg", "brmsfit"))) stop("This model class is not supported.")
   
-  ##################################
+  #_____________________________________________________________________________
   # Get all the necessary variables
-  ##################################
+  #_____________________________________________________________________________
   is_sdm <- inherits(fit, 'sdmTMB')
   
   # Unstan indices
@@ -162,9 +161,9 @@ get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, pr
   # name of the response variable
   response_name <- insight::find_response(fit)
   
-  ###################################
+  #_____________________________________________________________________________
   # Create  data for prediction
-  ###################################
+  #_____________________________________________________________________________
   
   cols_to_keep <- setdiff(mod_terms, c(year, response_name))
   mod_data <- raw_data[, cols_to_keep]
@@ -174,9 +173,9 @@ get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, pr
   newdata <- merge(setNames(data.frame(yrs), year), mean_mode_row, all = TRUE)
   
   
-  ###################################
+  #_____________________________________________________________________________
   # Draw from model predictions
-  ###################################
+  #_____________________________________________________________________________
   if (is.brmsfit(fit)) {
     
     draws <- fitted(object = fit, newdata = newdata, probs = c(probs[1], 0.5, probs[2]), re_formula = NA, scale = "response", summary = F)
@@ -312,9 +311,9 @@ get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, pr
   
 }
 
-##################################################################################
+#_____________________________________________________________________________
 # Draft approach for binomial index where index is predicted from the model at modes for factors 18.02.2026
-##################################################################################
+#_____________________________________________________________________________
 
 # # GLMs
 # 

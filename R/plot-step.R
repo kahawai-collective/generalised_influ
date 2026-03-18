@@ -38,7 +38,7 @@ plot_step <- function(step_df, compare_step_df = NULL){
       )
   })%>%bind_rows()
   
-  # Comparison logic
+  # ---Comparison logic---
   if(!is.null(compare_step_df)){
     
     # transform comparison df and merge it with  all steps df
@@ -50,7 +50,7 @@ plot_step <- function(step_df, compare_step_df = NULL){
                          FacetTarget = Model,
                          LineType = 'Compare')) 
   }
-  # End of comparison logic
+  # ---End of comparison logic---
   legend_labels <- c(
       "Reduced" = "Reduced models",
       "Previous"   = "Before adding current predictor",

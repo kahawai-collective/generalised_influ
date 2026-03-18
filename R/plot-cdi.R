@@ -153,7 +153,7 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
         )
     }
     
-    # 1. Coefficients  Plot
+    # (1) Coefficients  Plot
     #_____________________________________________________________________________
     
     # Create plot theme depending on the term:
@@ -239,7 +239,7 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
       dynamic_theme +
       common_theme
     
-    # 2. Distribution Plot
+    # (2) Distribution Plot
     #_____________________________________________________________________________
     
     distrs <- preds %>%
@@ -288,7 +288,7 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
       common_theme
     
     
-    # 3. Influence
+    # (3) Influence
     #______________________________________________________________________________
     
     # This is formula 3b from Bentley et al. 2012
@@ -339,7 +339,7 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
       geom_line(group = 1) +                   
       geom_point(size = 3, pch = 16) +
       
-      # 3. In the foreground: Brown dots and lines for model to compare with
+      # In the foreground: Brown dots and lines for model to compare with
       { if (compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)) {
         list(
           geom_line(data = comp_infl, group = 1, linetype = 'dashed', color = 'palevioletred4'),
@@ -358,7 +358,8 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
       background_grid(major = "y", minor = "none") +
       common_theme
     
-    
+    # (4) Blank or legend for top right corner
+    #______________________________________________________________________________
     pv <- ggplot() + 
       geom_point(aes(x = 0, y = 0), alpha = 0) + 
       
