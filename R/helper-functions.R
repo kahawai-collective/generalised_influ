@@ -89,7 +89,15 @@ inv_logit <- function(z) {
 #' @export
 #' 
 mean_or_mode <- function(z) {
-  if(is.numeric(z)) mean(z, na.rm = TRUE) else factor(names(sort(-table(z)))[1])
+  if (all(is.na(z))) {
+    return(z[1]) # Returns an NA of the correct class
+  }
+  
+  if(is.numeric(z)){
+    return(mean(z, na.rm = TRUE))
+    } else {
+      return(factor(names(sort(-table(z, useNA = "no")))[1]))
+    }
 }
 
 
