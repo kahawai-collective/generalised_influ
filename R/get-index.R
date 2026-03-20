@@ -165,13 +165,25 @@ get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, pr
   # Create  data for prediction
   #_____________________________________________________________________________
   
-  cols_to_keep <- setdiff(mod_terms, c(year, response_name))
-  mod_data <- raw_data[, cols_to_keep]
   
-  # Apply mean_or_mode to each column 
-  mean_mode_row <- as.data.frame(lapply(mod_data, mean_or_mode))
-  newdata <- merge(setNames(data.frame(yrs), year), mean_mode_row, all = TRUE)
+  # This bit not working, return to it later. Use dplyr for now.
   
+  # cols_to_keep <- setdiff(mod_terms, c(year, response_name))
+  # mod_data <- raw_data [, cols_to_keep, with = FALSE]
+  # 
+  # # Apply mean_or_mode to each column 
+  # mean_mode_row <- as.data.frame(lapply(mod_data, mean_or_mode))
+  # 
+  # # Expand Grid: join with the 'yrs' vector
+  # grid_list <- c(list(yrs), mean_mode_row)
+  # names(grid_list)[1] <- year
+  # newdata <- do.call(expand.grid, c(grid_list, stringsAsFactors = FALSE))
+  # 
+  
+  newdata <- raw_data %>%
+    dplyr::select(-all_of(year), -all_of(response_name)) %>%
+    summarise(across(everything(), ~mean_or_mode(.x))) %>%
+    tidyr::expand_grid(!!year := yrs )
   
   #_____________________________________________________________________________
   # Draw from model predictions
