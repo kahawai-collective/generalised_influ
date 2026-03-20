@@ -180,10 +180,13 @@ get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, pr
   # newdata <- do.call(expand.grid, c(grid_list, stringsAsFactors = FALSE))
   # 
   
+  cols_to_keep <- setdiff(mod_terms, c(year, response_name))
+  
+  # Subset the data to only terms that are in the model
   newdata <- raw_data %>%
-    dplyr::select(-all_of(year), -all_of(response_name)) %>%
+    dplyr::select(all_of(cols_to_keep)) %>%
     summarise(across(everything(), ~mean_or_mode(.x))) %>%
-    tidyr::expand_grid(!!year := yrs )
+    tidyr::expand_grid(!!year := yrs)
   
   #_____________________________________________________________________________
   # Draw from model predictions
