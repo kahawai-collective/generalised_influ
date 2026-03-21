@@ -222,6 +222,11 @@ get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, pr
       if (is.factor(raw_data[[col_name]])) {
         newdata[[col_name]] <- factor(newdata[[col_name]], 
                                       levels = levels(raw_data[[col_name]]))
+        
+        # Accommodate situation where factors were stores as characters, otherwise model matrix creation fails
+      } else if (is.character(raw_data[[col_name]])){
+        newdata[[col_name]] <- factor(newdata[[col_name]], 
+                                      levels = sort(unique(as.character(raw_data[[col_name]]))))
       }
     }
     
