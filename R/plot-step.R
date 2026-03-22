@@ -52,11 +52,11 @@ plot_step <- function(step_df, compare_step_df = NULL){
   }
   # ---End of comparison logic---
   legend_labels <- c(
-      "Reduced" = "Reduced models",
-      "Previous"   = "Before adding current predictor",
-      "Compare"    = paste("Previous update to", max(as.numeric(as.character(compare_step_df$level)))),
-      "Current"    = "Current"
-    )
+    "Reduced" = "Reduced models",
+    "Previous"   = "Before adding current predictor",
+    "Compare"    = paste("Previous update to", max(as.numeric(as.character(compare_step_df$level)))),
+    "Current"    = "Current"
+  )
   
   df_all_steps$LineType <- factor(df_all_steps$LineType, levels = names(legend_labels)) 
   
@@ -84,7 +84,7 @@ plot_step <- function(step_df, compare_step_df = NULL){
                            # If it starts low and goes up -> Place at TOP (y = Inf), otherwise place at BOTTOM (y = -Inf)
                            y_pos = if_else(is_starting_low & is_upward, Inf, -Inf),
                            v_just = if_else(y_pos == Inf, 1.1, -0.1),
-                           ),
+                 ),
                aes(label = FacetTarget, x = -Inf, y = y_pos, vjust = v_just),
                inherit.aes = FALSE,
                # Fixed alignment settings:
@@ -107,7 +107,7 @@ plot_step <- function(step_df, compare_step_df = NULL){
       strip.text = element_blank(),       
       panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5), 
       panel.spacing = unit(0, "lines"),
-      axis.text = element_text(size = 10)
+      axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 1, size = 10)
     )
   
   return(p)

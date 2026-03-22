@@ -70,9 +70,18 @@ plot_RIC <- function(fit, grouping_var = 'stat_area', min_records = 10,  add.rho
     labs(x='Fishing year',
          y='Index',
          size="Records") +
+    scale_x_discrete(breaks = function(x) {
+      if (length(x) > 15) {
+        # If more than 15 years, take every 2nd year
+        return(x[seq(1, length(x), by = 2)])
+      } else {
+        # Otherwise, show all years
+        return(x)
+      }
+    }) +
     theme_cowplot()+
     theme(axis.text.x = element_text(hjust = 0,
-                                     angle = 90)) +
+                                     angle = 90, size = 10)) +
     (if(add.rho) {
       list(
         geom_text(aes(x = Inf, y = Inf, label = Num), 
