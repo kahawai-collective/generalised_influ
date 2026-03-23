@@ -107,7 +107,8 @@ plot_step <- function(step_df, compare_step_df = NULL){
       strip.text = element_blank(),       
       panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5), 
       panel.spacing = unit(0, "lines"),
-      axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 1, size = 10)
+      axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10),
+      axis.title.x = element_text(margin = margin(t = 15))
     )
   
   return(p)
