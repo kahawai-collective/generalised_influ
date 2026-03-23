@@ -48,14 +48,17 @@ plot_RIC <- function(fit, grouping_var = 'stat_area', min_records = 10,  add.rho
               imp_scaled = mean(imp_scaled),
               idx_scaled = mean(idx_scaled)) %>%
     mutate(Num = sum(n),
-           rho=cor(implied, idx_scaled, use="pairwise.complete.obs")) 
+           level  = as.integer(as.character(level)),
+           rho=cor(implied, idx_scaled, use="pairwise.complete.obs")) %>%
+    complete(level = full_seq(level, 1)) %>% 
+    ungroup()
     
   
   p <-   ggplot(ric_data,
                 aes(x=level,
                     y=imp_scaled))+
     geom_point(aes(size=n), alpha = 0.5)+
-    geom_line(aes(group = 1))+
+    geom_line()+
     geom_errorbar(aes(ymin=(imp_scaled-1.96*se),
                       ymax=(imp_scaled+1.96*se)),
                   size=0.3,
@@ -70,13 +73,16 @@ plot_RIC <- function(fit, grouping_var = 'stat_area', min_records = 10,  add.rho
     labs(x='Fishing year',
          y='Index',
          size="Records") +
-    scale_x_discrete(breaks = function(x) {
-      if (length(x) > 15) {
-        # If more than 15 years, take every 2nd year
-        return(x[seq(1, length(x), by = 2)])
+    scale_x_continuous(breaks = function(x) {
+      # x is the range of years present in the data
+      years <- seq(min(x, na.rm = TRUE), max(x, na.rm = TRUE))
+      
+      if (length(years) > 15) {
+        # If more than 15 years, show every 2nd year
+        round(seq(min(years), max(years), by = 2))
       } else {
-        # Otherwise, show all years
-        return(x)
+        # Otherwise show all
+        round(years)
       }
     }) +
     theme_cowplot()+
