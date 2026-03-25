@@ -47,12 +47,15 @@ plot_RIC <- function(fit, grouping_var = 'stat_area', min_records = 10,  add.rho
               idx = mean(stan_unscaled),
               imp_scaled = mean(imp_scaled),
               idx_scaled = mean(idx_scaled)) %>%
-    mutate(Num = sum(n),
-           level  = as.integer(as.character(level)),
-           rho=cor(implied, idx_scaled, use="pairwise.complete.obs")) %>%
+    mutate(level  = as.integer(as.character(level))) %>%
     complete(level = full_seq(level, 1)) %>% 
     ungroup()
     
+  imp_count <- ric_data %>%
+    group_by(!!grouping_var) %>%
+    summarise(Num = sum(n, na.rm = T),
+           rho=cor(implied, idx_scaled, use="pairwise.complete.obs"))
+  
   
   p <-   ggplot(ric_data,
                 aes(x=level,
@@ -90,10 +93,12 @@ plot_RIC <- function(fit, grouping_var = 'stat_area', min_records = 10,  add.rho
                                      angle = 90, size = 10)) +
     (if(add.rho) {
       list(
-        geom_text(aes(x = Inf, y = Inf, label = Num), 
-                  vjust = 1.2, hjust = 1.1, colour = 'deepskyblue4'),
-        geom_text(aes(x = Inf, y = Inf, label = paste0('rho == ', round(rho, 2))), 
-                  vjust = 2.6, hjust = 1.1, colour = 'deepskyblue4', parse = TRUE)
+        list(
+          geom_text(data = imp_count, aes(x = Inf, y = Inf, label = paste0("N = ", Num)), 
+                    vjust = 1.2, hjust = 1.1, colour = 'deepskyblue4'),
+          geom_text(data = imp_count, aes(x = Inf, y = Inf, label = paste0('rho == ', round(rho, 2))), 
+                    vjust = 2.6, hjust = 1.1, colour = 'deepskyblue4', parse = TRUE)
+        )
       )
     } else {
       NULL
