@@ -6,6 +6,7 @@
 \usage{
 plot_index(
   index,
+  component = "Combined",
   fill = "black",
   probs = c(0.25, 0.75),
   rescale = 1,

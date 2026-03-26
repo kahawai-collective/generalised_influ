@@ -374,3 +374,266 @@ get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, pr
 #   pivot_longer(cols = -.iteration,
 #                names_to = 'level',
 #                values_to = '.value') 
+
+
+
+#________________________________________________________________________________________________________________
+#' Extract and Combine Standardized Indices from Multiple Model Classes
+#'
+#' @description
+#' A unified interface to extract temporal indices from \code{sdmTMB}, \code{glm}, 
+#' \code{brmsfit}, and \code{survreg} models. This function specifically handles 
+#' "Hurdle" or "Delta" structures by combining binomial (occurrence) and 
+#' positive (magnitude) components into a single "Combined" expected value index, 
+#' standardised by the geometric mean.
+#'
+#' @param fit A model object of class \code{sdmTMB}, \code{glm}, \code{brmsfit}, or \code{survreg}.
+#' @param hurdle_fit Optional. A separate model object (e.g., a binomial GLM) if 
+#'   the primary \code{fit} only represents the positive component of a delta model.
+#' @param year Character string naming the temporal variable (e.g., "year"). 
+#'   If \code{NULL}, the function attempts to automatically detect the first term.
+#' @param probs Numeric vector of length 2 specifying the lower and upper quantiles 
+#'   for uncertainty intervals. Defaults to \code{c(0.025, 0.975)}.
+#' @param rescale Scale factor for the series. Defaults to 1.
+#' @param pred_grid A \code{data.frame} for predictions. Required for \code{sdmTMB} 
+#'   to define the spatial area for integration.
+#' #'
+#' @return A Dataframe containing indices
+#' #' @importFrom stats coefficients vcov formula model.frame model.matrix delete.response terms aggregate quantile median
+#' @importFrom dplyr select mutate group_by ungroup summarise across everything rename left_join bind_rows
+#' @importFrom tidyr pivot_longer expand_grid
+#' @importFrom rlang !! sym
+#' @importFrom mvtnorm rmvnorm
+#' @importFrom insight find_response
+#' @export
+#'
+#'
+get_index_comb <- function(fit, hurdle_fit = NULL, year = NULL, probs = c(0.025, 0.975), rescale = 1, pred_grid = NULL,  ...) {
+  
+  if  (!inherits(fit, c("sdmTMB", "glm", "survreg", "brmsfit"))) stop("This model class is not supported.")
+  
+  #_____________________________________________________________________________
+  # Get all the necessary variables
+  #_____________________________________________________________________________
+  is_sdm <- inherits(fit, 'sdmTMB')
+  
+  # Name if first term
+  if (is.null(year)) {
+    year <- get_first_term(fit = fit)
+  }
+  # levels of fyear
+  yrs <-  sort(unique(model.frame(fit)[[year]]))
+  
+  # number of years
+  n <- length(yrs)
+  
+  #_____________________________________________________________________________
+  #  Draw from model predictions for sdmTMB
+  #_____________________________________________________________________________
+  
+  if(is_sdm) {
+    # Spatio-temporal models 
+    draws <- list()
+    # Binomial Index 
+    # come back to test this
+    #  model <- if (length(spatiotemporal$formula)==2)  = 1
+    predict_sim <- predict(fit, newdata = pred_grid, return_tmb_object = TRUE, nsim = 1000, model = 1, type = "response")
+    # generate draws of indices
+    draws$Binomial <- sdmTMB::get_index_sims(predict_sim, return_sims = T) %>% # need to think about the area here
+      rename(level = !!sym(year)) 
+    
+    #  Positive Index  
+    predict_sim <- predict(fit, newdata = pred_grid, return_tmb_object = TRUE, nsim = 1000, model = 2)
+    # generate draws of indices
+    draws$Positive <- sdmTMB::get_index_sims(predict_sim, return_sims = T) %>% # need to think about the area here
+      rename(level = !!sym(year)) 
+    
+    
+    
+  } else {
+    
+    # create a list to hold binomial and positive model components if they exist
+    mods <- list()
+    mods$Positive <- if (is.null(fit$family$family) || !any(family(fit) %in% c("bernoulli", "binomial"))) fit
+    mods$Binomial <- if (!is.null(hurdle_fit)) {
+      hurdle_fit
+    } else if ((!is.null(fit$family$family) && any(fit$family$family %in% c("bernoulli", "binomial")))){
+      fit
+    }
+    
+    draws <- setNames(lapply(names(mods), function(component) {
+      
+      this_model <- mods[[component]]
+      # model data
+      raw_data <- this_model$data
+      
+      if (is.null(raw_data) && inherits(this_model, "survreg")) {
+        raw_data <- eval(this_model$call$data)
+      }
+      
+      # Forumula
+      mod_terms <- all.vars(as.formula(formula(this_model)))
+      
+      # name of the response variable
+      response_name <- insight::find_response(this_model)
+      
+      #_____________________________________________________________________________
+      # Create  data for prediction
+      #_____________________________________________________________________________
+      
+      # This bit not working, return to it later. Use dplyr for now.
+      
+      # cols_to_keep <- setdiff(mod_terms, c(year, response_name))
+      # mod_data <- raw_data [, cols_to_keep, with = FALSE]
+      # 
+      # # Apply mean_or_mode to each column 
+      # mean_mode_row <- as.data.frame(lapply(mod_data, mean_or_mode))
+      # 
+      # # Expand Grid: join with the 'yrs' vector
+      # grid_list <- c(list(yrs), mean_mode_row)
+      # names(grid_list)[1] <- year
+      # newdata <- do.call(expand.grid, c(grid_list, stringsAsFactors = FALSE))
+      # 
+      
+      cols_to_keep <- setdiff(mod_terms, c(year, response_name))
+      
+      # Subset the data to only terms that are in the model
+      newdata <- raw_data %>%
+        dplyr::select(all_of(cols_to_keep)) %>%
+        summarise(across(everything(), ~mean_or_mode(.x))) %>%
+        tidyr::expand_grid(!!year := yrs)
+      
+      #_____________________________________________________________________________
+      # Draw from model predictions for brms, GLM and survreg
+      #_____________________________________________________________________________
+      if (is.brmsfit(this_model)) {
+        
+        draws <- fitted(object = this_model, newdata = newdata, probs = c(probs[1], 0.5, probs[2]), re_formula = NA, scale = "response", summary = F)
+        
+        colnames(draws) <- yrs
+        
+        draws <- draws %>%
+          as.data.frame() %>%
+          mutate(.iteration = row_number()) %>%
+          pivot_longer(cols = -.iteration,
+                       names_to = 'level',
+                       values_to = '.value') 
+        
+        
+      }else if(inherits(fit, c("glm", "survreg"))){
+        # GLMs and Survreg. 
+        
+        # Extract model coeffs
+        cfs <- coefficients(this_model)
+        
+        # Extract covariance matrix. Survreg has extra param Log(scale), we subset vcov matrix to the size fo coefficients only 
+        V <- vcov(this_model)[1:length(cfs), 1:length(cfs)]
+        
+        # Different process for binomial component
+        if (!is.null(this_model$family$family) && any(this_model$family$family %in% c("bernoulli", "binomial"))){
+          
+          rows = c(1,which(substr(row.names(V),
+                                  1,
+                                  nchar(year))==year))
+          
+          resp_name <- names(model.frame(this_model))[1]
+          int <- logit(aggregate(list(unstan=this_model$model[[resp_name]]),
+                                 list(level=this_model$model[[year]]),
+                                 mean)$unstan)[1]
+          cfs[1] <- int
+          
+          bin <- mvtnorm::rmvnorm(1000,cfs,V)[,rows]
+          bin <- cbind(inv_logit(bin[,1]),inv_logit(bin[,1] + bin[,2:length(yrs)]))
+          
+          draws <- bin
+        } else {
+          # Positive model component
+          
+          # Create draws of model coeffs
+          beta_draws <- mvtnorm::rmvnorm(1000,cfs,V)
+          
+          # Force the levels in newdata to match the levels in raw_data
+          for (col_name in names(newdata)) {
+            if (is.factor(raw_data[[col_name]])) {
+              newdata[[col_name]] <- factor(newdata[[col_name]], 
+                                            levels = levels(raw_data[[col_name]]))
+              
+              # Accommodate situation where factors were stores as characters, otherwise model matrix creation fails
+            } else if (is.character(raw_data[[col_name]])){
+              newdata[[col_name]] <- factor(newdata[[col_name]], 
+                                            levels = sort(unique(as.character(raw_data[[col_name]]))))
+            }
+          }
+          
+          # Model matrix for new data
+          X <- model.matrix(delete.response(terms(this_model)), data = newdata)
+          
+          # Predicted response for new data
+          draws <- exp(beta_draws %*% t(X))
+          
+        }
+        
+        # Rearrange df for index derivation
+        colnames(draws) <- yrs
+        
+        draws <- draws %>%
+          as.data.frame() %>%
+          mutate(.iteration = row_number()) %>%
+          pivot_longer(cols = -.iteration,
+                       names_to = 'level',
+                       values_to = '.value') 
+        
+      }
+      return(draws)
+    }), names(mods))
+  }
+  
+  #________________________________________________________________________________
+  # Bring it all together: Derive indices normalised with geometric mean
+  #_________________________________________________________________________________
+  # This step is common to all models
+  
+  # Derive Combined index if two models exist.
+  if(length(draws)==2){
+    draws$Combined <- draws$Positive
+    draws$Combined$.value <- draws$Positive$.value * draws$Binomial$.value
+  }
+  
+  # Do geometric mean transformation to draws, then summarise to find medians and quantiles
+  
+  indices <- setNames(lapply(names(draws), function(idx){
+    index_stan <- draws[[idx]] %>%
+      
+      group_by(.iteration) %>%
+      mutate(
+        level = factor(level),
+        rel_idx = exp(log(.value) - mean(log(.value)))
+      ) %>%
+      ungroup() %>%
+      group_by(level) %>%
+      summarise(
+        stan_unscaled = median(.value),
+        stanLower_unscaled = quantile(.value, 0.025),
+        stanUpper_unscaled = quantile(.value, 0.975),
+        stan = median(rel_idx),
+        stanLower = quantile(rel_idx, 0.025),
+        stanUpper = quantile(rel_idx, 0.975)
+      )
+    
+    # Unstan indices
+    if (idx != 'Combined'){
+      predictor = ifelse(idx=='Binomial', 1, 2)
+      this_model <- if (is_sdm) fit else mods[[idx]]
+      indices <- get_unstandardised(fit = this_model, predictor = predictor)
+      
+      # merge unstan andf stan indices
+      indices <- indices %>%
+        left_join(index_stan,  by = 'level')
+    } else { indices <- index_stan}
+    return(indices)
+  } ), names(draws))
+  
+  
+  indices <- bind_rows(indices, .id = "Index")
+  return(indices)
+}
