@@ -12,21 +12,11 @@
 
 plot_step <- function(step_df, compare_step_df = NULL){
   
-  # Identify the column where the index for the first model is stored
-  
-  start_idx <- match("stanUpper", names(step_df)) +1
-  
-  model_names <- names(step_df)[start_idx:ncol(step_df)]
-  
-  df_long <- step_df %>%
-    dplyr::select(Year = level, all_of(model_names)) %>%
-    pivot_longer(-Year, names_to = "Model", values_to = "Index") %>%
-    mutate(Model = factor(Model, levels = model_names)) # Keeps them in order
-  
+  model_names <- levels(step_df$Model)
   # Generate the background data for every facet
   # For each step, we take all data from that step and all previous steps
   df_all_steps <- lapply(seq_along(model_names), function(i) {
-    df_long %>%
+    step_df %>%
       filter(as.numeric(Model) <= i) %>%
       mutate(
         FacetTarget = factor(model_names[i]),
@@ -44,10 +34,7 @@ plot_step <- function(step_df, compare_step_df = NULL){
     # transform comparison df and merge it with  all steps df
     df_all_steps<- df_all_steps %>%
       bind_rows(compare_step_df %>%
-                  dplyr::select(Year = level, all_of(model_names)) %>%
-                  pivot_longer(-Year, names_to = "Model", values_to = "Index") %>%
-                  mutate(Model = factor(Model, levels = model_names),                        # Keeps them in order
-                         FacetTarget = Model,
+                  mutate(FacetTarget = Model,
                          LineType = 'Compare')) 
   }
   # ---End of comparison logic---
@@ -60,7 +47,7 @@ plot_step <- function(step_df, compare_step_df = NULL){
   
   df_all_steps$LineType <- factor(df_all_steps$LineType, levels = names(legend_labels)) 
   
-  p <- ggplot(df_all_steps %>% arrange(LineType), aes(x = Year, y = Index, group = interaction(Model, LineType))) +
+  p <- ggplot(df_all_steps %>% arrange(LineType), aes(x = level, y = median, group = interaction(Model, LineType))) +
     geom_line(aes(color = LineType, linetype = LineType), linewidth = 0.5 ) +
     scale_color_manual(values = c("Current" = "royalblue", "Compare" = 'palevioletred4', "Reduced" = "grey85", "Previous" = "black" ),
                        labels = legend_labels) +
@@ -72,15 +59,14 @@ plot_step <- function(step_df, compare_step_df = NULL){
     geom_point(data = filter(df_all_steps, LineType == "Current"), 
                color = "royalblue") +
     
-    
     geom_label(data = df_all_steps %>%
                  group_by(FacetTarget) %>%
                  summarize(Model = last(Model),
                            
                            # Following mutate logic is all about location of facet labels
-                           is_upward = last(Index) > first(Index),
+                           is_upward = last(median) > first(median),
                            # Proximity Check: Is the start of the series closer to bottom or top of y-range?
-                           is_starting_low = mean(head(Index)) < max(Index) - mean(head(Index)),
+                           is_starting_low = mean(head(median)) < max(median) - mean(head(median)),
                            # If it starts low and goes up -> Place at TOP (y = Inf), otherwise place at BOTTOM (y = -Inf)
                            y_pos = if_else(is_starting_low & is_upward, Inf, -Inf),
                            v_just = if_else(y_pos == Inf, 1.1, -0.1),

@@ -9,7 +9,7 @@ get_first_term <- function(fit) {
   if (is.brmsfit(fit)) {
     f1 <- as.character(fit$formula)[1]
     f2 <- gsub("~", "+", f1)
-    focus <- str_split(f2, " \\+ ")[[1]][2]
+    focus <- strsplit(f2, " \\+ ")[[1]][2]
     
   }  else if (any(class(fit) %in% c("sdmTMB", "glm", 'survreg'))){
     focus <- attr(terms(fit), "term.labels")[1]

@@ -11,7 +11,20 @@
 plot_RIC <- function(fit, grouping_var = 'stat_area', min_records = 10,  add.rho = TRUE){
   year <- get_first_term(fit)
   grouping_var <- sym(grouping_var)
-  idx <- get_index(fit)
+  
+  component <- if(length(fit$family$family)==2) {
+    'Combined'
+  } else if (!is.null(fit$family$family) && (fit$family$family %in% c("bernoulli", "binomial"))){
+    'Binomial'
+  } else {
+    'Positive'
+  }
+  
+  
+  idx <- get_index_comb(fit, format = "wide")
+  idx <- idx %>%
+    filter(Index==component)
+  
   
   raw_data <- fit$data
   
@@ -93,13 +106,11 @@ plot_RIC <- function(fit, grouping_var = 'stat_area', min_records = 10,  add.rho
                                      angle = 90, size = 10)) +
     (if(add.rho) {
       list(
-        list(
           geom_text(data = imp_count, aes(x = Inf, y = Inf, label = paste0("N = ", Num)), 
                     vjust = 1.2, hjust = 1.1, colour = 'deepskyblue4'),
           geom_text(data = imp_count, aes(x = Inf, y = Inf, label = paste0('rho == ', round(rho, 2))), 
                     vjust = 2.6, hjust = 1.1, colour = 'deepskyblue4', parse = TRUE)
         )
-      )
     } else {
       NULL
     })

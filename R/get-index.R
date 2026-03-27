@@ -110,6 +110,7 @@ get_unstandardised <- function(fit, year = NULL, rescale = 1, predictor = NULL) 
 #' @return a \code{data.frame} or a \code{ggplot} object.
 #' @importFrom stats fitted
 #' @importFrom brms is.brmsfit
+#' @importFrom splines ns
 #' @import insight
 #' @import ggplot2
 #' @import patchwork
@@ -401,14 +402,15 @@ get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, pr
 #' @return A Dataframe containing indices
 #' #' @importFrom stats coefficients vcov formula model.frame model.matrix delete.response terms aggregate quantile median
 #' @importFrom dplyr select mutate group_by ungroup summarise across everything rename left_join bind_rows
-#' @importFrom tidyr pivot_longer expand_grid
+#' @importFrom tidyr pivot_longer pivot_wider expand_grid
 #' @importFrom rlang !! sym
 #' @importFrom mvtnorm rmvnorm
 #' @importFrom insight find_response
+#' @importFrom splines ns
 #' @export
 #'
 #'
-get_index_comb <- function(fit, hurdle_fit = NULL, year = NULL, probs = c(0.025, 0.975), rescale = 1, pred_grid = NULL,  ...) {
+get_index_comb <- function(fit, hurdle_fit = NULL, year = NULL, probs = c(0.025, 0.975), rescale = 1, pred_grid = NULL,  format = 'long', ...) {
   
   if  (!inherits(fit, c("sdmTMB", "glm", "survreg", "brmsfit"))) stop("This model class is not supported.")
   
@@ -454,7 +456,7 @@ get_index_comb <- function(fit, hurdle_fit = NULL, year = NULL, probs = c(0.025,
     
     # create a list to hold binomial and positive model components if they exist
     mods <- list()
-    mods$Positive <- if (is.null(fit$family$family) || !any(family(fit) %in% c("bernoulli", "binomial"))) fit
+    mods$Positive <- if (is.null(fit$family$family) || !any(fit$family$family %in% c("bernoulli", "binomial"))) fit
     mods$Binomial <- if (!is.null(hurdle_fit)) {
       hurdle_fit
     } else if ((!is.null(fit$family$family) && any(fit$family$family %in% c("bernoulli", "binomial")))){
@@ -634,6 +636,32 @@ get_index_comb <- function(fit, hurdle_fit = NULL, year = NULL, probs = c(0.025,
   } ), names(draws))
   
   
-  indices <- bind_rows(indices, .id = "Index")
-  return(indices)
+  indices_wide <- bind_rows(indices, .id = "Index")
+  
+  if(format == 'wide'){
+  return(indices_wide)
+  }
+  else{
+    indices_long <- indices_wide %>%
+      pivot_longer(
+        cols = -c(level, Index),
+        names_to = c("is_stan", "stat", "is_scaled"),
+        names_pattern = "^(stan|unstan)(Lower|Upper)?_?(unscaled)?$",
+        values_drop_na = TRUE
+      ) %>%
+      mutate(
+        stat = ifelse(stat == "" , "median", stat),
+        is_scaled = (is_scaled == ""),
+        is_stan = (is_stan=='stan')
+        # is_stan = factor(is_stan, levels = c("stan", "unstan"), 
+        #                  labels = c("Standardised", "Unstandardised"))
+        
+      ) %>%
+      # Pivot 'median', 'Lower', and 'Upper' back into their own columns
+      pivot_wider(
+        names_from = stat, 
+        values_from = value
+      )
+    return(indices_long)
+  }
 }

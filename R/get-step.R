@@ -34,7 +34,6 @@ get_step <- function(fit, pred_grid = NULL, predictor = NULL) {
     
   }
   
-  
   # extract terms from this formula
   terms_labels <- get_terms(fit, predictor = predictor)
   
@@ -58,10 +57,6 @@ get_step <- function(fit, pred_grid = NULL, predictor = NULL) {
                                                  paste(paste(terms_labels[1:min(termCount,length(terms_labels)) ],
                                                              collapse='+')))))
       
-      
-      
-      
-      
       # Prepare arguments for the re-fit
       fit_args <- list(object = fit, formula. = newFormula)
       
@@ -78,7 +73,8 @@ get_step <- function(fit, pred_grid = NULL, predictor = NULL) {
       fit_reduced <- do.call(update, fit_args)
       
       # Get index for this model
-      idx_reduced <- get_index (fit_reduced,  pred_grid = pred_grid, predictor = predictor)
+      idx_reduced <- get_index_comb (fit_reduced, pred_grid = pred_grid, predictor = predictor)
+      
       # print(summary(fit_reduced))
       # Generate the right hand side of formula as name for index
       idx_name <- case_when(
@@ -89,7 +85,8 @@ get_step <- function(fit, pred_grid = NULL, predictor = NULL) {
       )
       
       # Store column of indices
-      effects[[idx_name]] <- idx_reduced$stan
+      effects[[idx_name]] <- idx_reduced %>%
+        filter(is_stan, is_scaled)%>% select(Index, level, median, Lower, Upper)
       
     } else {
       term = 'intercept'
@@ -141,11 +138,13 @@ get_step <- function(fit, pred_grid = NULL, predictor = NULL) {
     select(-logLik)
   
   #  Combine all the effect columns into one wide data frame
-  all_idx <- do.call(cbind, effects)
+  all_idx <- bind_rows(effects, .id = "Model") %>%
+    mutate(Model = factor(Model, levels = unique(Model)))
   
   #  Final bind indices from last iteration with unstan and CI + all the steps 
-  indices <- cbind(idx_reduced, all_idx)  
+  # This was ghoti process, but it does not seem to be used anywhere
+  # indices <- cbind(idx_reduced, all_idx)  
   
-  return(list(step_indices = indices, step_summary = step_summary))
+  return(list(step_indices = all_idx, step_summary = step_summary))
 }
 
