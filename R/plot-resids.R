@@ -4,6 +4,7 @@
 #' @param grouping_var A character string specifying the column name to group by. 
 #' Defaults to 'stat_area'.
 #' @importFrom splines ns
+#' @importFrom cowplot theme_cowplot
 #' @return A ggplot2 object showing the implied vs. scaled indices.
 #' @export
 
@@ -21,7 +22,7 @@ plot_RIC <- function(fit, grouping_var = 'stat_area', min_records = 10,  add.rho
   }
   
   
-  idx <- get_index_comb(fit, format = "wide")
+  idx <- get_index(fit, format = "wide")
   idx <- idx %>%
     filter(Index==component)
   

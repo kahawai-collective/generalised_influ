@@ -8,11 +8,9 @@
 #' @param year Character string. The name of the temporal column (e.g., "fyear") 
 #'   to be used as the focus variable on the y-axis of the distribution plot.
 #' @param predictor 
-#
-#' 
 #' @import ggplot2
 #' @import dplyr
-#' @import patchwork
+#' @importFrom patchwork plot_layout
 #' @importFrom stats as.formula coef
 #' 
 #' @export
@@ -197,7 +195,7 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
     
     
     p1 <- ggplot(coeffs, aes(x = term, y = exp(coef))) +
-      geom_point(shape = 2, size = 2) +
+      geom_point(shape = 2, size = 2, color  = '#377EB8') +
       geom_errorbar(aes(ymin = exp(lower), ymax = exp(upper)), width = 0) +
       # Bottom Cap
       geom_segment(aes(x = as.numeric(term) - 0.05, xend = as.numeric(term) + 0.05, 
@@ -212,8 +210,8 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
         list(
           geom_point(data = comp_coeffs,
                      aes(x = term, y=exp(coef)),
-                     shape = 17, size = 2, color = 'palevioletred4'),
-          geom_errorbar(data = comp_coeffs, aes(ymin = exp(lower), ymax = exp(upper)), color = 'palevioletred4', width = 0) 
+                     shape = 17, size = 2, color = '#E41A1CCC'),
+          geom_errorbar(data = comp_coeffs, aes(ymin = exp(lower), ymax = exp(upper)), color = '#E41A1CCC', width = 0) 
         )
       }} +
       
@@ -270,13 +268,13 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
     
     
     p2 <- ggplot(distrs, aes(x = term, y = focus, size = sqrt(prop) * 20)) +
-      geom_point(pch = 1) +
+      geom_point(pch = 1, col = 'dodgerblue1') +
       
       # Conditional block to display dists for a model to be compared with (e.g. last year)
       { if (compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)) {
         geom_point(data = comp_distrs,
                    pch = 1,
-                   color = 'palevioletred4')
+                   color = 'goldenrod', alpha = 0.6)
       }} +
       
       scale_size_identity() +
@@ -336,14 +334,14 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
       
       # In the middle layer: Black dots and lines for current (or only) model
       geom_vline(xintercept = 1, linetype = "dashed") +
-      geom_line(group = 1) +                   
-      geom_point(size = 3, pch = 16) +
+      geom_line(group = 1, col = 'dodgerblue1') +                   
+      geom_point(size = 3, pch = 16, col = 'dodgerblue1') +
       
       # In the foreground: Brown dots and lines for model to compare with
       { if (compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)) {
         list(
-          geom_line(data = comp_infl, group = 1, linetype = 'dashed', color = 'palevioletred4'),
-          geom_point(data = comp_infl, shape = 16, size = 3, color = 'palevioletred4')
+          geom_line(data = comp_infl, group = 1, linetype = 'dashed', color = 'goldenrod', alpha = 0.6),
+          geom_point(data = comp_infl, shape = 16, size = 3, color = 'goldenrod', alpha = 0.6)
         )
       }} +
       

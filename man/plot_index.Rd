@@ -10,8 +10,8 @@ plot_index(
   fill = "black",
   probs = c(0.25, 0.75),
   rescale = 1,
-  predictor = NULL,
-  show_unstandardised = TRUE
+  show_unstandardised = TRUE,
+  overlay = FALSE
 )
 }
 \arguments{

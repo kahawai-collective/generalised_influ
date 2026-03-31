@@ -8,6 +8,7 @@
 #' @return A \code{ggplot} object visualising the impact of each explanatory variable on CPUE standardisation.
 #' @import ggplot2
 #' @import dplyr
+#' @importFrom cowplot theme_cowplot 
 #' @export
 
 plot_step <- function(step_df, compare_step_df = NULL){

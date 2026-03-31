@@ -133,6 +133,7 @@ get_terms <- function(fit, predictor = NULL){
 #' 
 #' @param fit fitted model object
 #' @return A list containing preds dataframe and other stuff
+#' @importFrom splines ns
 #' @export
 #' 
 #' 

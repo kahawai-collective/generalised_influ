@@ -8,7 +8,7 @@
 #' @import ggplot2
 #' @importFrom stats dunif model.frame model.response
 #' @import DHARMa 
-#' 
+#' @importFrom cowplot plot_grid
 #' @export
 #' 
 

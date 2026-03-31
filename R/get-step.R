@@ -10,7 +10,6 @@
 #' @param ... Additional parameters passed to \code{fitted}.
 #' @return a \code{data.frame} or a \code{ggplot} object.
 #' @import ggplot2
-#' @import patchwork
 #' @import dplyr
 #' @export
 #' 
@@ -73,7 +72,7 @@ get_step <- function(fit, pred_grid = NULL, predictor = NULL) {
       fit_reduced <- do.call(update, fit_args)
       
       # Get index for this model
-      idx_reduced <- get_index_comb (fit_reduced, pred_grid = pred_grid, predictor = predictor)
+      idx_reduced <- get_index (fit_reduced, pred_grid = pred_grid, predictor = predictor)
       
       # print(summary(fit_reduced))
       # Generate the right hand side of formula as name for index

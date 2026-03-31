@@ -113,11 +113,10 @@ get_unstandardised <- function(fit, year = NULL, rescale = 1, predictor = NULL) 
 #' @importFrom splines ns
 #' @import insight
 #' @import ggplot2
-#' @import patchwork
 #' @import dplyr
 #' @export
 #' 
-get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, pred_grid = NULL, predictor = NULL, ...) {
+get_index_old <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, pred_grid = NULL, predictor = NULL, ...) {
   
   if  (!inherits(fit, c("sdmTMB", "glm", "survreg", "brmsfit"))) stop("This model class is not supported.")
   
@@ -400,7 +399,7 @@ get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, pr
 #'   to define the spatial area for integration.
 #' #'
 #' @return A Dataframe containing indices
-#' #' @importFrom stats coefficients vcov formula model.frame model.matrix delete.response terms aggregate quantile median
+#' @importFrom stats coefficients vcov formula model.frame model.matrix delete.response terms aggregate quantile median
 #' @importFrom dplyr select mutate group_by ungroup summarise across everything rename left_join bind_rows
 #' @importFrom tidyr pivot_longer pivot_wider expand_grid
 #' @importFrom rlang !! sym
@@ -410,7 +409,7 @@ get_index <- function(fit, year = NULL, probs = c(0.025, 0.975), rescale = 1, pr
 #' @export
 #'
 #'
-get_index_comb <- function(fit, hurdle_fit = NULL, year = NULL, probs = c(0.025, 0.975), rescale = 1, pred_grid = NULL,  format = 'long', ...) {
+get_index <- function(fit, hurdle_fit = NULL, year = NULL, probs = c(0.025, 0.975), rescale = 1, pred_grid = NULL,  format = 'long', ...) {
   
   if  (!inherits(fit, c("sdmTMB", "glm", "survreg", "brmsfit"))) stop("This model class is not supported.")
   
@@ -519,6 +518,7 @@ get_index_comb <- function(fit, hurdle_fit = NULL, year = NULL, probs = c(0.025,
           mutate(.iteration = row_number()) %>%
           pivot_longer(cols = -.iteration,
                        names_to = 'level',
+                       names_transform = list(level = as.factor),
                        values_to = '.value') 
         
         
@@ -583,6 +583,7 @@ get_index_comb <- function(fit, hurdle_fit = NULL, year = NULL, probs = c(0.025,
           mutate(.iteration = row_number()) %>%
           pivot_longer(cols = -.iteration,
                        names_to = 'level',
+                       names_transform = list(level = as.factor),
                        values_to = '.value') 
         
       }
@@ -608,18 +609,18 @@ get_index_comb <- function(fit, hurdle_fit = NULL, year = NULL, probs = c(0.025,
       
       group_by(.iteration) %>%
       mutate(
-        level = factor(level),
+       # level = factor(level),
         rel_idx = exp(log(.value) - mean(log(.value)))
       ) %>%
       ungroup() %>%
       group_by(level) %>%
       summarise(
-        stan_unscaled = median(.value),
-        stanLower_unscaled = quantile(.value, 0.025),
-        stanUpper_unscaled = quantile(.value, 0.975),
-        stan = median(rel_idx),
-        stanLower = quantile(rel_idx, 0.025),
-        stanUpper = quantile(rel_idx, 0.975)
+        stan_unscaled = as.numeric(median(.value)),
+        stanLower_unscaled = as.numeric(quantile(.value, 0.025)),
+        stanUpper_unscaled = as.numeric(quantile(.value, 0.975)),
+        stan = as.numeric(median(rel_idx)),
+        stanLower = as.numeric(quantile(rel_idx, 0.025)),
+        stanUpper = as.numeric(quantile(rel_idx, 0.975))
       )
     
     # Unstan indices
