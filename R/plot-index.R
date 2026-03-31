@@ -257,3 +257,175 @@ compare_indices <- function(cidx,
   return(g)
   
 }
+
+
+####################################################################################
+# DRAFT sos plot, work in progress
+####################################################################################
+
+plot_sos <- function(cidx, 
+                     CPUE_set, 
+                     component = 'Positive', 
+                     ref_period=NULL, 
+                     period_type='target', 
+                     ref_series = 1, 
+                     ref_index = 'Positive', 
+                     landings_data = NULL, 
+                     plot_exploitation = TRUE, 
+                     cpue_smooth = FALSE, 
+                     bmsy_proxy = 40){
+  
+  if(length(component)==1) component <- rep(component, length(CPUE_set))
+  ref_name <- names(cidx[ref_series])
+  
+  indices <- lapply(1:length(CPUE_set), function(l) cidx[[CPUE_set[l]]] %>% 
+                      filter(is_stan, is_scaled, Index %in% component[l]) %>%
+                      mutate(level = as.numeric(as.character(level)),
+                             Series = names(cidx)[[CPUE_set[l]]],
+                             is_ref = (Series == ref_name & Index == ref_index))) %>%
+    bind_rows()
+  
+  if(!is.null(landings_data)){
+    indices <- landings_data %>%
+      filter(!(destination_type=='X')) %>%
+      group_by(fishyear) %>%
+      summarise(landings = sum(gwt, na.rm=T)) %>%
+      mutate(landings= landings/1000,
+             level = as.integer(as.character(fishyear))) %>%
+      inner_join(indices, by = c('level')) %>%
+      mutate(erate = landings/index,
+             erate = erate/gmean(erate))
+  }
+  
+  overlap <- indices %>%
+    group_by(Series, Index) %>%
+    summarise(min_y = min(level),
+              max_y = max(level), 
+              .groups = "drop") %>%
+    summarise(start = max(min_y), 
+              end = min(max_y))
+  
+  indices <- indices %>%
+    group_by(Series, Index) %>%
+    mutate(
+      # Calculate gmean only on the subset that falls in the overlap
+      gmeans = gmean(median[level >= overlap$start & level <= overlap$end]),
+      index  = median / gmeans,
+      Lower  = Lower / gmeans,
+      Upper  = Upper / gmeans
+    ) 
+  #_____________________________________________________________________________
+  # Stock status plot
+  #_____________________________________________________________________________
+  
+  g1 <- ggplot(indices, aes(level, index, group = interaction(Series,Index), linetype = Index, color = is_ref))
+  
+  
+  if(!is.null(ref_period)){
+    
+    # Extract reference index
+    this_idx <-indices[indices$is_ref &  indices$Index == ref_index,]
+    
+    # Smooth it if desired, subset to ref period only
+    if (cpue_smooth) {
+      ll      <- loess(index~level, data=this_idx)
+      ref_vals <- ll$fitted[this_idx$level %in% ref_period]
+    } else {
+      ref_vals <- this_idx$index[this_idx$level %in% ref_period]
+    }
+    
+    ref_mult <- case_when(
+      period_type == 'target' ~ 1,
+      period_type == 'soft_limit' ~ bmsy_proxy/20,
+      period_type == 'hard_limit' ~ bmsy_proxy/10
+    )
+    
+    # Calculate base value
+    b <- gmean(ref_vals) * ref_mult
+    
+    # Add B10, B20, B40 and reference period to the plot
+    g1 <- g1 + geom_hline(yintercept = b * c(1, 20/bmsy_proxy, 10/bmsy_proxy), 
+                          linetype = c(5,2,4), col = c("seagreen", "orange", "tomato")) +
+      geom_vline(xintercept = range(ref_period), linetype = 'dashed', col = 'blue')
+    
+  }
+  
+  # Add indices to the plot  
+  g1 <- g1 +
+    geom_linerange(data = filter(indices, is_ref), aes(ymin = Lower, ymax = Upper), size = 0.5) +
+    geom_line() + 
+    geom_point() +
+    scale_color_manual(values = c("TRUE" = "black", "FALSE" = "grey80"), guide = "none") +
+    scale_y_continuous('CPUE index', limits = c(0, NA)) +
+    theme_cowplot()
+  
+  if (length(unique(component)) == 1) {
+    g1 <- g1 +
+      scale_linetype(guide = 'none') 
+  }
+  if (cpue_smooth) {g1 <- g1 + geom_smooth(data = this_idx, aes(x=level, y=index))}
+  
+  # If no landings data, we exit here
+  if(is.null(landings_data)) return(g1 + xlab("Year"))  
+  
+  #_____________________________________________________________________________
+  # If have landings data: Removals plot and Exploitation rate plot
+  #_____________________________________________________________________________
+  
+  if(!is.null(landings_data)){
+    
+    landings <- landings_data %>% filter(destination_type != 'X') %>%
+      group_by(level = as.numeric(as.character(fishyear))) %>%
+      summarise(landings = sum(gwt, na.rm=T)/1000) %>%
+      inner_join(indices, by = c('level')) %>%
+      mutate(erate = landings/index,
+             erate = erate/gmean(erate))
+    
+    # --- Removals plot ---
+    
+    g2 <- ggplot(landings,aes(level, landings))  +
+      scale_x_continuous('',breaks=unique(joint$level)) +
+      scale_y_continuous('Removals (t)', limits=c(0, NA)) +
+      geom_line()+
+      geom_point()+
+      theme_cowplot() +
+      theme(axis.text.x = element_blank(),
+            panel.grid.major = element_line(colour='grey90'))+
+      labs(title="(a)")
+    
+    if (plot_exploitation) {
+      g1 <- g1 +
+        theme(axis.text.x = element_blank(),
+              panel.grid.major = element_line(colour='grey90')) +
+        labs(title="(b)")
+      
+      g3 <- ggplot(joint %>% filter(Series == ref_idx))  +
+        scale_x_continuous('Fishing year',breaks=unique(joint$level),limits=range(unique(joint$level))) +
+        scale_y_continuous('Relative exploitation rate', limits = c(0,NA)) +
+        geom_line(aes(level, erate))+
+        geom_point(aes(x=level, y=erate))+
+        theme_cowplot() +
+        theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 45, size = rel(0.7)),
+              panel.grid.major = element_line(colour='grey90'))+
+        labs(title="(c)")
+      
+      if(!is.null(ref_period)){
+        g3 <- g3 + geom_hline(yintercept=gmean(this_idx$erate[this_idx$level %in% ref_period])/ref_mult, linetype='longdash', col='seagreen')
+      }
+      ggarrange(g2,g1,g3,ncol=1,common.legend = TRUE,legend='right',align='v')
+    } else {
+      g1 <- g1 +
+        theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 45, size = rel(0.7)),
+              panel.grid.major = element_line(colour='grey90')) +
+        labs(title="(b)")
+      ggarrange(g2,g1,ncol=1,common.legend = TRUE,legend='right',align='v')
+    }
+  } else {
+    
+    g1 <- g1 +
+      xlab('Fishing year') +
+      theme(axis.text.x = element_text(vjust = 1, hjust=1, angle = 45),
+            panel.grid.major = element_line(colour='grey90'))
+    g1
+  }
+}
