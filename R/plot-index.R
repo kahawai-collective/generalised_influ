@@ -374,6 +374,7 @@ plot_sos <- function(cidx,
     scale_color_manual(values = c("TRUE" = "black", "FALSE" = "grey80"), guide = "none") +
     scale_y_continuous('CPUE index', limits = c(0, NA)) +
     theme_cowplot() +
+    theme(panel.grid.major = element_line(colour = 'grey90')) +
     (if(plot_exploitation){
       list(
         xlab('') ,   
