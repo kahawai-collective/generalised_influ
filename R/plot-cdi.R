@@ -154,6 +154,10 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
     # (1) Coefficients  Plot
     #_____________________________________________________________________________
     
+    
+    # Colours when comparison, black otherwise?
+    col1 <- if (compareOn) 'dodgerblue1' else 'black'
+    
     # Create plot theme depending on the term:
     
     if ((length(levels(levels)) > 12)) {
@@ -195,7 +199,7 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
     
     
     p1 <- ggplot(coeffs, aes(x = term, y = exp(coef))) +
-      geom_point(shape = 2, size = 2, color  = '#377EB8') +
+      geom_point(shape = 2, size = 2, color  = col1) +
       geom_errorbar(aes(ymin = exp(lower), ymax = exp(upper)), width = 0) +
       # Bottom Cap
       geom_segment(aes(x = as.numeric(term) - 0.05, xend = as.numeric(term) + 0.05, 
@@ -268,13 +272,13 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
     
     
     p2 <- ggplot(distrs, aes(x = term, y = focus, size = sqrt(prop) * 20)) +
-      geom_point(pch = 1, col = 'dodgerblue1') +
+      geom_point(pch = 1, col = col1) +
       
       # Conditional block to display dists for a model to be compared with (e.g. last year)
       { if (compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)) {
         geom_point(data = comp_distrs,
                    pch = 1,
-                   color = 'goldenrod', alpha = 0.6)
+                   color = '#E41A1CCC', alpha = 0.6)
       }} +
       
       scale_size_identity() +
@@ -334,14 +338,14 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
       
       # In the middle layer: Black dots and lines for current (or only) model
       geom_vline(xintercept = 1, linetype = "dashed") +
-      geom_line(group = 1, col = 'dodgerblue1') +                   
-      geom_point(size = 3, pch = 16, col = 'dodgerblue1') +
+      geom_line(group = 1, col = col1) +                   
+      geom_point(size = 3, pch = 16, col = col1) +
       
       # In the foreground: Brown dots and lines for model to compare with
       { if (compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)) {
         list(
-          geom_line(data = comp_infl, group = 1, linetype = 'dashed', color = 'goldenrod', alpha = 0.6),
-          geom_point(data = comp_infl, shape = 16, size = 3, color = 'goldenrod', alpha = 0.6)
+          geom_line(data = comp_infl, group = 1, linetype = 'dashed', color = '#E41A1CCC', alpha = 0.6),
+          geom_point(data = comp_infl, shape = 16, size = 3, color = '#E41A1CCC', alpha = 0.6)
         )
       }} +
       
@@ -386,9 +390,9 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
         annotate("point", x = 3, y = 50, shape = 2, size = 2, color = "black") +
         
         # Row 2: Previous
-        annotate("segment", x = 5, xend = 15, y = 40, yend = 40, color = "palevioletred4", linetype = "dotted") +
-        annotate("point", x = 10, y = 40, shape = 16, size = 2, color = "palevioletred4") +
-        annotate("point", x = 3, y = 40, shape = 17, size = 2, color = "palevioletred4") +
+        annotate("segment", x = 5, xend = 15, y = 40, yend = 40, color = "#E41A1CCC", linetype = "dotted") +
+        annotate("point", x = 10, y = 40, shape = 16, size = 2, color = "#E41A1CCC") +
+        annotate("point", x = 3, y = 40, shape = 17, size = 2, color = "#E41A1CCC") +
         
         # Row 3 & 4: Ranges
         annotate("point", x = 10, y = 30, shape = 15, size = 6, color = "grey80", alpha = 0.5) +

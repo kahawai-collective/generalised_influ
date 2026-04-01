@@ -263,6 +263,26 @@ compare_indices <- function(cidx,
 # DRAFT sos plot, work in progress
 ####################################################################################
 
+#' Plot Status of the stock 
+#'
+#' Generates a multi-panel plot showing CPUE indices relative to reference levels (if exist), 
+#' removals, and relative exploitation rates.
+#'
+#' @param cidx A list of CPUE index data frames generated with get_index().
+#' @param CPUE_set Character vector of series names to include.
+#' @param component Character vector of index components, one of c('BInomial', 'Positive', 'Combined').
+#' @param ref_period Numeric vector of years for the reference period.
+#' @param period_type Reference type one of c('target', 'soft_limit', 'hard_limit').
+#' @param ref_series Index of the reference series in `CPUE_set`.
+#' @param ref_index The name of the reference index component, one of c('BInomial', 'Positive', 'Combined').
+#' @param landings_data Data frame of landings/removals.
+#' @param plot_exploitation Logical; if TRUE, includes the exploitation rate panel.
+#' @param cpue_smooth Logical; applies loess smoothing to the CPUE.
+#' @param bmsy_proxy Numeric proxy value (default 40).
+#'
+#' @return A patchwork ggplot object.
+#' @export
+
 plot_sos <- function(cidx, 
                      CPUE_set, 
                      component = 'Positive', 
@@ -280,22 +300,12 @@ plot_sos <- function(cidx,
   
   indices <- lapply(1:length(CPUE_set), function(l) cidx[[CPUE_set[l]]] %>% 
                       filter(is_stan, is_scaled, Index %in% component[l]) %>%
-                      mutate(level = as.numeric(as.character(level)),
+                      mutate(level = as.integer(as.character(level)),
                              Series = names(cidx)[[CPUE_set[l]]],
                              is_ref = (Series == ref_name & Index == ref_index))) %>%
-    bind_rows()
+    bind_rows() %>% arrange(is_ref)
   
-  if(!is.null(landings_data)){
-    indices <- landings_data %>%
-      filter(!(destination_type=='X')) %>%
-      group_by(fishyear) %>%
-      summarise(landings = sum(gwt, na.rm=T)) %>%
-      mutate(landings= landings/1000,
-             level = as.integer(as.character(fishyear))) %>%
-      inner_join(indices, by = c('level')) %>%
-      mutate(erate = landings/index,
-             erate = erate/gmean(erate))
-  }
+  
   
   overlap <- indices %>%
     group_by(Series, Index) %>%
@@ -352,80 +362,93 @@ plot_sos <- function(cidx,
   
   # Add indices to the plot  
   g1 <- g1 +
+    
+    # Layer 1: Background (All non-reference series)
+    geom_line(data = filter(indices, !is_ref), color = "grey80") +
+    geom_point()+
+    
+    # Layer 2: Foreground (The reference series only)
+    geom_line(data = filter(indices, is_ref), color = "black") +
     geom_linerange(data = filter(indices, is_ref), aes(ymin = Lower, ymax = Upper), size = 0.5) +
-    geom_line() + 
-    geom_point() +
+    
     scale_color_manual(values = c("TRUE" = "black", "FALSE" = "grey80"), guide = "none") +
     scale_y_continuous('CPUE index', limits = c(0, NA)) +
-    theme_cowplot()
+    theme_cowplot() +
+    (if(plot_exploitation){
+      list(
+        xlab('') ,   
+        theme(axis.text.x = element_blank())
+      )
+    } else{
+      list(
+        xlab('Fishing year') , 
+        theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 45, size = rel(0.7)))
+      )
+    })
   
-  if (length(unique(component)) == 1) {
-    g1 <- g1 +
-      scale_linetype(guide = 'none') 
-  }
+  if (length(unique(component)) == 1) {g1 <- g1 +  scale_linetype(guide = 'none') }
+  
   if (cpue_smooth) {g1 <- g1 + geom_smooth(data = this_idx, aes(x=level, y=index))}
   
   # If no landings data, we exit here
-  if(is.null(landings_data)) return(g1 + xlab("Year"))  
+  if(is.null(landings_data)) return(g1)  
   
   #_____________________________________________________________________________
   # If have landings data: Removals plot and Exploitation rate plot
   #_____________________________________________________________________________
   
-  if(!is.null(landings_data)){
+  landings <- landings_data %>% filter(destination_type != 'X') %>%
+    group_by(level = as.integer(fishyear)) %>%
+    summarise(landings = sum(gwt, na.rm=T)/1000) %>%
+    inner_join(indices, by = c('level')) %>%
+    mutate(erate = landings/index,
+           erate = erate/gmean(erate))
+  
+  # --- Removals plot ---
+  
+  g2 <- ggplot(landings,aes(level, landings))  +
+    scale_y_continuous('Removals (t)', limits=c(0, NA)) +
+    geom_line()+
+    geom_point()+
+    xlab('') +
+    theme_cowplot() +
+    theme(axis.text.x = element_blank())
+  
+  # --- Exploitation rate plot ---
+  if (plot_exploitation) {
     
-    landings <- landings_data %>% filter(destination_type != 'X') %>%
-      group_by(level = as.numeric(as.character(fishyear))) %>%
-      summarise(landings = sum(gwt, na.rm=T)/1000) %>%
-      inner_join(indices, by = c('level')) %>%
-      mutate(erate = landings/index,
-             erate = erate/gmean(erate))
     
-    # --- Removals plot ---
-    
-    g2 <- ggplot(landings,aes(level, landings))  +
-      scale_x_continuous('',breaks=unique(joint$level)) +
-      scale_y_continuous('Removals (t)', limits=c(0, NA)) +
+    g3 <- ggplot(data = landings %>% filter(is_ref), aes(x=level, y=erate))  +
+      # scale_x_continuous('Fishing year',breaks=unique(joint$level),limits=range(unique(joint$level))) +
+      scale_x_continuous('Fishing year')+
+      scale_y_continuous('Relative exploitation rate', limits = c(0,NA)) +
       geom_line()+
       geom_point()+
       theme_cowplot() +
-      theme(axis.text.x = element_blank(),
-            panel.grid.major = element_line(colour='grey90'))+
-      labs(title="(a)")
-    
-    if (plot_exploitation) {
-      g1 <- g1 +
-        theme(axis.text.x = element_blank(),
-              panel.grid.major = element_line(colour='grey90')) +
-        labs(title="(b)")
-      
-      g3 <- ggplot(joint %>% filter(Series == ref_idx))  +
-        scale_x_continuous('Fishing year',breaks=unique(joint$level),limits=range(unique(joint$level))) +
-        scale_y_continuous('Relative exploitation rate', limits = c(0,NA)) +
-        geom_line(aes(level, erate))+
-        geom_point(aes(x=level, y=erate))+
-        theme_cowplot() +
-        theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 45, size = rel(0.7)),
-              panel.grid.major = element_line(colour='grey90'))+
-        labs(title="(c)")
-      
+      theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 45, size = rel(0.7))) +
       if(!is.null(ref_period)){
-        g3 <- g3 + geom_hline(yintercept=gmean(this_idx$erate[this_idx$level %in% ref_period])/ref_mult, linetype='longdash', col='seagreen')
+        geom_hline(yintercept=gmean(landings$erate[ landings$is_ref & landings$Index == ref_index & landings$level %in% ref_period])/ref_mult,
+                   linetype='longdash', col='seagreen')
       }
-      ggarrange(g2,g1,g3,ncol=1,common.legend = TRUE,legend='right',align='v')
-    } else {
-      g1 <- g1 +
-        theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 45, size = rel(0.7)),
-              panel.grid.major = element_line(colour='grey90')) +
-        labs(title="(b)")
-      ggarrange(g2,g1,ncol=1,common.legend = TRUE,legend='right',align='v')
-    }
-  } else {
     
-    g1 <- g1 +
-      xlab('Fishing year') +
-      theme(axis.text.x = element_text(vjust = 1, hjust=1, angle = 45),
-            panel.grid.major = element_line(colour='grey90'))
-    g1
+    # three plots
+    plot_combined <- (g2 / g1 / g3) + 
+      plot_layout(guides = "collect") + 
+      plot_annotation(tag_levels = list(c("(a)", "(b)", "(c)"))) & 
+      theme(panel.grid.major = element_line(colour = 'grey90'),
+            plot.tag.position = c(0.06, 1.15),
+            plot.margin = margin(t = 20, r = 10, b = 10, l = 10))
+    
+    # two plots
+  } else {
+    plot_combined <- (g2 / g1) + 
+      plot_layout(guides = "collect") + 
+      plot_annotation(tag_levels = list(c("(a)", "(b)", "(c)"))) & 
+      theme(panel.grid.major = element_line(colour = 'grey90'),
+            plot.tag.position = c(0.06, 1.1),
+            plot.margin = margin(t = 20, r = 10, b = 10, l = 10))
   }
+  
+  
+  return(plot_combined)
 }
