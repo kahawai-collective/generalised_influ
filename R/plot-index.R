@@ -160,39 +160,39 @@ plot_index <- function(index,
 
 compare_indices <- function(cidx, 
                             CPUE_set, 
-                            component = 'Positive', 
+                            # component = 'Positive', 
                             alt_CPUE1 = NULL, 
-                            componentAlt1=component[1],
+                            # componentAlt1=component[1],
                             series_alt1 = NULL,
                             alt_CPUE2 = NULL, 
-                            componentAlt2=component[1],
+                            # componentAlt2=component[1],
                             series_alt2 = NULL,
                             normalise_ENSO = FALSE,
                             uncert=F){
   
-  if(length(component)==1) component <- rep(component, length(CPUE_set))
+  # if(length(component)==1) component <- rep(component, length(CPUE_set))
   
   # helper function to filter idx and add idx rescaled between -1 and 1.
-  process_idx <- function(idx, target_index) {
+process_idx <- function(idx, series_set) {
     idx %>% 
-      filter(is_stan, is_scaled, Index %in% target_index) %>%
-      mutate(level = as.numeric(as.character(level)),
-             index.norm = 2 * ((median - min(median)) / (max(median) - min(median))) - 1)
+      filter(is_stan, is_scaled, Series %in% series_set, tolower(Index)==selected_idx) %>%
+      group_by(Series) %>%
+      mutate(index.norm = 2 * ((median - min(median)) / (max(median) - min(median))) - 1)
   }
   
-  indices <- setNames(lapply(seq_along(CPUE_set), function(l) {
-    process_idx(cidx[[CPUE_set[l]]], component[l])
-  }), names(cidx[CPUE_set]))
+  
+  indices <- process_idx(cidx, CPUE_set)
   
   
-  joint <- bind_rows(indices, .id = 'Series')
+  
+  if(!is.null(alt_CPUE1)) indices <- bind_rows(indices, process_idx(alt_CPUE1, series_alt1) %>% 
+                                                 mutate(Series = paste(Series, 'alt')))
+  
+  if(!is.null(alt_CPUE2)) indices <- bind_rows(indices, process_idx(alt_CPUE2, series_alt2) %>% 
+                                                 mutate(Series = paste(Series, 'alt')))
   
   
-  if(!is.null(alt_CPUE1)) joint <- bind_rows(joint, process_idx(alt_CPUE1, componentAlt1) %>% mutate(Series = series_alt1))
-  if(!is.null(alt_CPUE2)) joint <- bind_rows(joint, process_idx(alt_CPUE2, componentAlt2) %>% mutate(Series = series_alt2))
-  
-  
-  overlap <- joint %>%
+  overlap <- indices %>%
     group_by(Series, Index) %>%
     summarise(min_y = min(level),
               max_y = max(level), 
@@ -200,7 +200,7 @@ compare_indices <- function(cidx,
     summarise(start = max(min_y), 
               end = min(max_y))
   
-  joint <- joint %>%
+  indices <- indices %>%
     group_by(Series, Index) %>%
     mutate(
       # Calculate gmean only on the subset that falls in the overlap
@@ -214,23 +214,23 @@ compare_indices <- function(cidx,
   
   y_col_name <- if (normalise_ENSO)  "index.norm" else "index"
   myColors <- c('dodgerblue', '#F5B915FF', '#08235FFF', '#4D9221',  "purple4" ,  "violetred")
-  n_series <- length(unique(joint$Series))
+  n_series <- length(unique(indices$Series))
   
   
-  g <- ggplot(joint, aes(level, 
-                         y = .data[[y_col_name]],
-                         ymin = Lower,
-                         ymax = Upper,
-                         linetype = `Index type`,
-                         shape = `Index type`,
-                         col = Series, 
-                         group = interaction(Series, `Index type`))) +
+  g <- ggplot(indices, aes(level, 
+                           y = .data[[y_col_name]],
+                           ymin = Lower,
+                           ymax = Upper,
+                           linetype = `Index type`,
+                           shape = `Index type`,
+                           col = Series, 
+                           group = interaction(Series, `Index type`))) +
     
     geom_line() +
     geom_point() +
     # Conditional Layers
     ( if (normalise_ENSO){
-      scale_y_continuous("CPUE index")
+      scale_y_continuous("CPUE index", limits = c(-1.1, 1.1))
     } else {
       list(
         scale_y_continuous("CPUE index", limits = c(0, NA)),
@@ -239,7 +239,7 @@ compare_indices <- function(cidx,
       )
     }) +
     
-    scale_x_continuous("Fishing year", breaks = unique(joint$level)) +
+    scale_x_continuous("Fishing year", breaks = unique(indices$level)) +
     scale_color_manual(values = myColors) +
     theme_cowplot() +
     theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 45),
@@ -248,7 +248,7 @@ compare_indices <- function(cidx,
           legend.direction = "vertical")
   
   
-  if (length(unique(joint$`Index type`)) == 1) {
+  if (length(unique(indices$`Index type`)) == 1) {
     # number of cols is 2 for 4+ series, and one row otherwise
     g <- g +guides(linetype = "none", shape = "none", colour = guide_legend(ncol = min(n_series, 2 + (n_series == 3))))
     
@@ -258,10 +258,6 @@ compare_indices <- function(cidx,
   
 }
 
-
-####################################################################################
-# DRAFT sos plot, work in progress
-####################################################################################
 
 #' Plot Status of the stock 
 #'
@@ -281,31 +277,26 @@ compare_indices <- function(cidx,
 #' @param bmsy_proxy Numeric proxy value (default 40).
 #'
 #' @return A patchwork ggplot object.
+#' @importFrom cowplot theme_cowplot 
 #' @export
 
 plot_sos <- function(cidx, 
                      CPUE_set, 
-                     component = 'Positive', 
                      ref_period=NULL, 
                      period_type='target', 
                      ref_series = 1, 
-                     ref_index = 'Positive', 
+                     # ref_index = 'Positive', 
                      landings_data = NULL, 
                      plot_exploitation = TRUE, 
                      cpue_smooth = FALSE, 
                      bmsy_proxy = 40){
   
-  if(length(component)==1) component <- rep(component, length(CPUE_set))
-  ref_name <- names(cidx[ref_series])
   
-  indices <- lapply(1:length(CPUE_set), function(l) cidx[[CPUE_set[l]]] %>% 
-                      filter(is_stan, is_scaled, Index %in% component[l]) %>%
-                      mutate(level = as.integer(as.character(level)),
-                             Series = names(cidx)[[CPUE_set[l]]],
-                             is_ref = (Series == ref_name & Index == ref_index))) %>%
-    bind_rows() %>% arrange(is_ref)
+  ref_name <- unique(cidx$Series)[ref_series]
   
-  
+  indices <- cidx %>% 
+    filter(is_stan, is_scaled, Series %in% CPUE_set, tolower(Index)==selected_idx) %>%
+    mutate(is_ref = (Series == ref_name))
   
   overlap <- indices %>%
     group_by(Series, Index) %>%
@@ -334,7 +325,7 @@ plot_sos <- function(cidx,
   if(!is.null(ref_period)){
     
     # Extract reference index
-    this_idx <-indices[indices$is_ref &  indices$Index == ref_index,]
+    this_idx <-indices[indices$is_ref,]
     
     # Smooth it if desired, subset to ref period only
     if (cpue_smooth) {
@@ -387,7 +378,7 @@ plot_sos <- function(cidx,
       )
     })
   
-  if (length(unique(component)) == 1) {g1 <- g1 +  scale_linetype(guide = 'none') }
+  if (length(unique(indices$Index)) == 1) {g1 <- g1 +  scale_linetype(guide = 'none') }
   
   if (cpue_smooth) {g1 <- g1 + geom_smooth(data = this_idx, aes(x=level, y=index))}
   
@@ -428,7 +419,7 @@ plot_sos <- function(cidx,
       theme_cowplot() +
       theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 45, size = rel(0.7))) +
       if(!is.null(ref_period)){
-        geom_hline(yintercept=gmean(landings$erate[ landings$is_ref & landings$Index == ref_index & landings$level %in% ref_period])/ref_mult,
+        geom_hline(yintercept=gmean(landings$erate[ landings$is_ref & landings$level %in% ref_period])/ref_mult,
                    linetype='longdash', col='seagreen')
       }
     
