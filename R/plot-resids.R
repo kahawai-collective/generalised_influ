@@ -78,7 +78,7 @@ plot_RIC <- function(fit, grouping_var = 'stat_area', min_records = 10,  add.rho
     geom_line()+
     geom_errorbar(aes(ymin=(imp_scaled-1.96*se),
                       ymax=(imp_scaled+1.96*se)),
-                  size=0.3,
+                  linewidth=0.3,
                   width=0.3)+
     geom_hline(yintercept=1,
                linetype=3,

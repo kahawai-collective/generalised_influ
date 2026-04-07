@@ -12,7 +12,7 @@
 #' @import dplyr
 #' @importFrom patchwork plot_layout
 #' @importFrom stats as.formula coef
-#' 
+#' @importFrom cowplot background_grid
 #' @export
 
 plot_cdi <- function(preds_list,  compare_preds_list = NULL){
@@ -385,9 +385,9 @@ plot_cdi <- function(preds_list,  compare_preds_list = NULL){
       
       pv <- ggplot() +
         # Row 1: Current
-        annotate("segment", x = 5, xend = 15, y = 50, yend = 50, color = "black", linetype = "solid") +
-        annotate("point", x = 10, y = 50, shape = 16, size = 2, color = "black") +
-        annotate("point", x = 3, y = 50, shape = 2, size = 2, color = "black") +
+        annotate("segment", x = 5, xend = 15, y = 50, yend = 50, color = "dodgerblue1", linetype = "solid") +
+        annotate("point", x = 10, y = 50, shape = 16, size = 2, color = "dodgerblue1") +
+        annotate("point", x = 3, y = 50, shape = 2, size = 2, color = "dodgerblue1") +
         
         # Row 2: Previous
         annotate("segment", x = 5, xend = 15, y = 40, yend = 40, color = "#E41A1CCC", linetype = "dotted") +
