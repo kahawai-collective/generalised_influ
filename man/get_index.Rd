@@ -2,34 +2,44 @@
 % Please edit documentation in R/get-index.R
 \name{get_index}
 \alias{get_index}
-\title{Get the standardised indices}
+\title{Extract and Combine Standardized Indices from Multiple Model Classes}
 \usage{
 get_index(
   fit,
+  hurdle_fit = NULL,
   year = NULL,
   probs = c(0.025, 0.975),
   rescale = 1,
   pred_grid = NULL,
-  predictor = NULL,
+  format = "long",
   ...
 )
 }
 \arguments{
-\item{fit}{An object of class \code{brmsfit}.}
+\item{fit}{A model object of class \code{sdmTMB}, \code{glm}, \code{brmsfit}, or \code{survreg}.}
 
-\item{year}{The year or time label (e.g. year, Year, fishing_year, etc).}
+\item{hurdle_fit}{Optional. A separate model object (e.g., a binomial GLM) if 
+the primary \code{fit} only represents the positive component of a delta model.}
 
-\item{probs}{The percentiles to be computed by the \code{quantile} function.}
+\item{year}{Character string naming the temporal variable (e.g., "year"). 
+If \code{NULL}, the function attempts to automatically detect the first term.}
 
-\item{rescale}{How to re-scale the series. Choose from "raw" to retain the raw series, "unstandardised" to re-scale to the geometric mean of the unstandardised series, or a number to re-scale by.}
+\item{probs}{Numeric vector of length 2 specifying the lower and upper quantiles 
+for uncertainty intervals. Defaults to \code{c(0.025, 0.975)}.}
 
-\item{...}{Additional parameters passed to \code{fitted}.}
+\item{rescale}{Scale factor for the series. Defaults to 1.}
 
-\item{do_plot}{Return a \code{ggplot} object instead of a \code{data.frame}.}
+\item{pred_grid}{A \code{data.frame} for predictions. Required for \code{sdmTMB} 
+  to define the spatial area for integration.
+#'}
 }
 \value{
-a \code{data.frame} or a \code{ggplot} object.
+A Dataframe containing indices
 }
 \description{
-Get the standardised indices each year with associated uncertainty and return either as a table or a ggplot.
+A unified interface to extract temporal indices from \code{sdmTMB}, \code{glm}, 
+\code{brmsfit}, and \code{survreg} models. This function specifically handles 
+"Hurdle" or "Delta" structures by combining binomial (occurrence) and 
+positive (magnitude) components into a single "Combined" expected value index, 
+standardised by the geometric mean.
 }

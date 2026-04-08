@@ -5,17 +5,17 @@
 #'
 #' @param fit A fitted model object (of class glm, glm2, or survreg).
 #' @return A ggplot object.
-#' 
 #' @import ggplot2
 #' @importFrom stats dunif model.frame model.response
 #' @import DHARMa 
-#' 
+#' @importFrom cowplot plot_grid
 #' @export
 #' 
 
 plot_DHARMares <- function(fit){  
-  
-  #__________________ Prepare residuals ___________________________________________________
+  #______________________________________________________________________________
+  #  Prepare residuals 
+  #______________________________________________________________________________
   
   diag_metrics <- data.frame(
     # the reason for sub-setting to [1:nrow(data)] is to accommodate survreg which has extra column in response
@@ -48,10 +48,11 @@ plot_DHARMares <- function(fit){
   p_vals <- q_test$pvals
   line_colours <- ifelse(p_vals <= 0.05, "red", "black")
   
+  #______________________________________________________________________________
+  #  Plotting code
+  #______________________________________________________________________________
   
-  #__________________ Plotting code______________________________________________________________
-  
-  # (1) Histogram of residuals versus uniform distribution
+  # (1) ---Histogram of residuals versus uniform distribution---
   d1 <- ggplot(diag_metrics) + geom_histogram(aes(x=qnorm(dharma_res),
                                                   y = after_stat(density)),
                                               stat='bin',
@@ -66,7 +67,7 @@ plot_DHARMares <- function(fit){
     theme_classic() +
     theme(axis.title=element_text(size=10))
   
-  # (2) Residuals vs fitted values
+  # (2) ---Residuals vs fitted values---
   
   # built-in function from DHARMa package, but result cannot be stored and used in patchwork
   # d2 <- DHARMa::plotResiduals(DHARMa, main = NULL)
@@ -89,7 +90,8 @@ plot_DHARMares <- function(fit){
     theme_classic() +
     theme(axis.title=element_text(size=10))
   
-  # (3) QQ plot
+  # (3) ---QQ plot---
+  
   # built-in function from DHARMa package, but result cannot be stored and used in patchwork
   # d3 <- DHARMa::plotQQunif(DHARMa, testDispersion = FALSE,
   #                          testUniformity = FALSE,
@@ -105,7 +107,7 @@ plot_DHARMares <- function(fit){
     theme_classic() +
     theme(axis.title=element_text(size=10))
   
-  # (4) observed versus fitted values 
+  # (4) ---Observed versus fitted values--- 
   d4 <- ggplot(diag_metrics) + geom_point(aes(fitted,
                                               observed),
                                           cex=0.3,
