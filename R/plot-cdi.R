@@ -885,10 +885,8 @@ cdi_plot_with_indicators <- function(preds_list,  compare_preds_list = NULL){
       )
     
     # print(combined_plot)
-    return(list(
-    plot = combined_plot,
-    indicators = indicators
-  ))
+    attr(combined_plot, "indicators") <- indicators
+    return(combined_plot)
     
   }), terms_labels)
   
