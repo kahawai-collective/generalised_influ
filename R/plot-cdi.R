@@ -591,9 +591,9 @@ cdi_plot_with_indicators <- function(preds_list,  compare_preds_list = NULL){
            
 
       indicators <- data.frame(coeffsDiffer = case_when(
-       any(coeffsDiffer>20) ~ 'red',
-      any(coeffsDiffer>10)  ~ 'amber',
-      TRUE                 ~ 'green')) 
+       any(coeffsDiffer>20) ~ '!',
+      any(coeffsDiffer>10)  ~ '?',
+      TRUE                  ~ '✔')) 
     }
     
     # (1) Coefficients  Plot
@@ -772,14 +772,13 @@ cdi_plot_with_indicators <- function(preds_list,  compare_preds_list = NULL){
       indicators$signFlips <- any(signLast!=signNew)
       
       # Generate outofRange indicator
-      !all(between(influAdded, min(comp_infl$Influence), max(comp_infl$Influence)))
       dist_above <- pmax(influAdded - max(comp_infl$Influence), 0)
   dist_below <- pmax(min(comp_infl$Influence) - influAdded, 0)
       dist_toRange <- max(dist_above + dist_below)
       indicators$outofRange <- case_when(
-        dist_toRange==0 ~ 'green',
-                dist_toRange>0.05 ~ 'red',
-        dist_toRange<0.05 ~ 'amber'
+        dist_toRange==0           ~ '✔',
+                dist_toRange>0.05 ~ '!',
+        dist_toRange<0.05         ~ '?'
         
       )
     }
