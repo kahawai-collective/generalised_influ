@@ -7,12 +7,9 @@
 compare_indices(
   cidx,
   CPUE_set,
-  component = "Positive",
   alt_CPUE1 = NULL,
-  componentAlt1 = component[1],
   series_alt1 = NULL,
   alt_CPUE2 = NULL,
-  componentAlt2 = component[1],
   series_alt2 = NULL,
   normalise_ENSO = FALSE,
   uncert = F
@@ -23,16 +20,9 @@ compare_indices(
 
 \item{CPUE_set}{Character vector. The names of the elements in \code{cidx} to be plotted.}
 
-\item{component}{Character vector. The specific \code{Index} type (e.g., 'Positive', 
-'Binomial', 'Combined') to extract from each set. Defaults to 'Positive'.}
-
 \item{alt_CPUE1}{Optional data frame. An additional index to include in the comparison.}
 
-\item{componentAlt1}{Character string. The \code{Index} type to extract from \code{alt_CPUE1}.}
-
 \item{alt_CPUE2}{Optional data frame. A second additional index to include.}
-
-\item{componentAlt2}{Character string. The \code{Index} type to extract from \code{alt_CPUE2}.}
 
 \item{series_alt2}{Character string. The legend label for \code{alt_CPUE2}.}
 
@@ -42,7 +32,14 @@ overlap period. Defaults to \code{FALSE}.}
 
 \item{uncert}{Logical. If \code{TRUE}, adds uncertainty bars.}
 
+\item{component}{Character vector. The specific \code{Index} type (e.g., 'Positive', 
+'Binomial', 'Combined') to extract from each set. Defaults to 'Positive'.}
+
+\item{componentAlt1}{Character string. The \code{Index} type to extract from \code{alt_CPUE1}.}
+
 \item{series_alt}{Character string. The legend label for \code{alt_CPUE1}.}
+
+\item{componentAlt2}{Character string. The \code{Index} type to extract from \code{alt_CPUE2}.}
 }
 \value{
 A \code{ggplot2} object.

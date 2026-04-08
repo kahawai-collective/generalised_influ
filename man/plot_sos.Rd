@@ -7,11 +7,9 @@
 plot_sos(
   cidx,
   CPUE_set,
-  component = "Positive",
   ref_period = NULL,
   period_type = "target",
   ref_series = 1,
-  ref_index = "Positive",
   landings_data = NULL,
   plot_exploitation = TRUE,
   cpue_smooth = FALSE,
@@ -23,15 +21,11 @@ plot_sos(
 
 \item{CPUE_set}{Character vector of series names to include.}
 
-\item{component}{Character vector of index components, one of c('BInomial', 'Positive', 'Combined').}
-
 \item{ref_period}{Numeric vector of years for the reference period.}
 
 \item{period_type}{Reference type one of c('target', 'soft_limit', 'hard_limit').}
 
 \item{ref_series}{Index of the reference series in `CPUE_set`.}
-
-\item{ref_index}{The name of the reference index component, one of c('BInomial', 'Positive', 'Combined').}
 
 \item{landings_data}{Data frame of landings/removals.}
 
@@ -40,6 +34,10 @@ plot_sos(
 \item{cpue_smooth}{Logical; applies loess smoothing to the CPUE.}
 
 \item{bmsy_proxy}{Numeric proxy value (default 40).}
+
+\item{component}{Character vector of index components, one of c('BInomial', 'Positive', 'Combined').}
+
+\item{ref_index}{The name of the reference index component, one of c('BInomial', 'Positive', 'Combined').}
 }
 \value{
 A patchwork ggplot object.
