@@ -33,18 +33,18 @@ plot_RIC <- function(fit, grouping_var = 'stat_area', min_records = 10,  add.rho
   if (is.null(raw_data) && inherits(fit, "survreg")) {
     raw_data <- eval(fit$call$data)
   }
-  
+
+  if(class(fit) == "survreg") logobs <- log(fit$model[,1][,1]) else if (grepl("log", formula(fit)[2])) logobs <- fit$model[,1] else logobs <- log(fit$model[,1])
+  if (grepl("log", formula(fit)[2])) logpred <- predict(fit) else logpred <- log(predict(fit))
+
+  #browser()
   ric_data <- tibble(level = raw_data[[year]],
                      !!grouping_var := raw_data[[as.character(grouping_var)]],                              
-                     resid  = residuals(fit, type = 'response')) %>%
+                     resid  = logobs - logpred) %>%
     add_count(level, !!grouping_var) %>% 
     filter(n >= min_records) %>%
-    left_join(idx, by = 'level') %>%
-    mutate(implied = if (grepl("log", formula(fit)[2])) {
-      exp(resid + log(stan_unscaled))
-    } else {
-      resid + stan_unscaled
-    }) %>%
+    dplyr::left_join(idx %>% select(level, stan, stan_unscaled)) %>%
+    mutate(implied = exp(resid + log(stan_unscaled))) %>%
     group_by(!!grouping_var) %>%    
     mutate(base_imp = {
       # Calculate arithmetic mean for each year 
@@ -53,13 +53,14 @@ plot_RIC <- function(fit, grouping_var = 'stat_area', min_records = 10,  add.rho
       exp(mean(log(yearly_means), na.rm = TRUE))
     },
     imp_scaled = implied / base_imp,
-    idx_scaled = stan) %>%
+    idx_scaled = stan,
+    stan_base = gmean(unique(stan))) %>%
     group_by(!!grouping_var, level) %>%
     summarise(n = n(),
               se = sd(imp_scaled)/ sqrt(n()),
               implied = mean(implied),
               idx = mean(stan_unscaled),
-              imp_scaled = mean(imp_scaled),
+              imp_scaled = mean(imp_scaled)*unique(stan_base), # rescale to geo mean of stan base during overlapping perdiod
               idx_scaled = mean(idx_scaled)) %>%
     mutate(level  = as.integer(as.character(level))) %>%
     complete(level = full_seq(level, 1)) %>% 
