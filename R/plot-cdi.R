@@ -515,6 +515,7 @@ cdi_plot_with_indicators <- function(preds_list,  compare_preds_list = NULL){
       group_by(term = !!levels) %>%  
       summarise(
         coef = mean(!!fit_colname),
+        count = n(),
         se   = {
           # Calculate the average design matrix row for this bin
           X_bin_avg <- colMeans(Xi_centered[row_id, , drop = FALSE])
@@ -573,6 +574,7 @@ cdi_plot_with_indicators <- function(preds_list,  compare_preds_list = NULL){
         group_by(term = !!comp_levels) %>%  
         summarise(
           coef = mean(!!fit_colname),
+          count = n(),
           se = {
             X_bin_avg <- colMeans(comp_Xi_centered[row_id, , drop = FALSE])
             as.numeric(sqrt(t(X_bin_avg) %*% comp_Vi %*% X_bin_avg))
@@ -587,7 +589,16 @@ cdi_plot_with_indicators <- function(preds_list,  compare_preds_list = NULL){
       
       # Generate coeffsDiffer indicator
       coeffs_merged <- merge(coeffs, comp_coeffs, by = "term", suffixes = c("_new", "_old"))
-       coeffsDiffer <- with (coeffs_merged, abs((exp(coef_new)- exp(coef_old))/exp(coef_old)*100))
+
+      if (is.factor(raw_values)){
+        coeffsDiffer <- with (coeffs_merged, abs((exp(coef_new)- exp(coef_old))/exp(coef_old)*100))
+      } else {
+        # weighted averages
+        w_new <- with (coeffs_merged, sum(exp(coef_new)*count_new)/sum(count_new))
+        w_old <- with (coeffs_merged, sum(exp(coef_old)*count_old)/sum(count_old))
+        # per cent difference in weighted averages
+        coeffsDiffer <- abs((w_new - w_old) / w_old) * 100
+      }
            
 
       indicators <- data.frame(coeffsDiffer = case_when(
@@ -885,6 +896,7 @@ cdi_plot_with_indicators <- function(preds_list,  compare_preds_list = NULL){
     
     # print(combined_plot)
     attr(combined_plot, "indicators") <- indicators
+    combined_plot@meta$indicators <- indicators
     return(combined_plot)
     
   }), terms_labels)
