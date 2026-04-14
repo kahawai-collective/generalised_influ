@@ -179,19 +179,15 @@ process_idx <- function(idx, series_set) {
       group_by(Series) %>%
       mutate(index.norm = 2 * ((median - min(median)) / (max(median) - min(median))) - 1)
   }
-  
-  
+    
   indices <- process_idx(cidx, CPUE_set)
-  
-  
   
   if(!is.null(alt_CPUE1)) indices <- bind_rows(indices, process_idx(alt_CPUE1, series_alt1) %>% 
                                                  mutate(Series = paste(Series, 'alt')))
   
   if(!is.null(alt_CPUE2)) indices <- bind_rows(indices, process_idx(alt_CPUE2, series_alt2) %>% 
-                                                 mutate(Series = paste(Series, 'alt')))
-  
-  
+                                                 mutate(Series = paste(Series, 'alt2')))
+    
   overlap <- indices %>%
     group_by(Series, Index) %>%
     summarise(min_y = min(level),
@@ -211,6 +207,56 @@ process_idx <- function(idx, series_set) {
     ) %>%
     rename(`Index type` = Index)
   
+  
+  #  ----- Time series stats -----
+  # _______________________________________________________________________________
+if(!is.null(alt_CPUE1)) {
+  
+
+level_divergence = function(current, last) {
+  1-sum(abs(current-last), na.rm = T)/sum(pmax(current, last), na.rm = T)
+}
+
+trend_divergence <- function(current, last, level, mode = "overlap") {
+  
+  df <- data.frame(cur = current, lst = last, lvl = level)
+  
+  # If calculating for overlapping period: Removes any row where either series is NA 
+  if (mode == "overlap")   df <- na.omit(df)
+     
+  smooth_cur  <- predict(loess(cur ~ lvl, data = df, span = 0.9, control = loess.control(surface = "direct"), na.action = na.omit))
+  smooth_last <- predict(loess(lst ~ lvl, data = df, span = 0.9, control = loess.control(surface = "direct"), na.action = na.omit),
+   newdata = data.frame(lvl = df$lvl))
+  
+  d_cur  <- diff(smooth_cur)
+  d_last <- diff(smooth_last)
+  
+  # Create exponential weights. We want the last year to be the heaviest.
+  weights <- exp(seq(0, 1, length.out = length(d_cur)))
+
+  # Compare the "energy" and direction of the slopes
+  1 - sum(weights*abs(d_cur - d_last), na.rm = TRUE) / (sum(weights*pmax(abs(d_cur), abs(d_last)), na.rm = TRUE)+0.01)
+
+  }
+
+  series_stats <- indices %>%
+    ungroup() %>%
+    select(level, Series, index) %>%
+          
+    pivot_wider(names_from = Series, values_from = index) %>%
+    rename_with(~ ifelse(grepl("alt", .x), "last", "current"), 
+                .cols = -level) %>%
+    arrange(level) %>%
+    summarise(
+      Level_Div = level_divergence(current, last),
+      Trend_Div_Overlap = trend_divergence(current, last, level, mode = "overlap"),
+      Trend_Div_Full = trend_divergence(current, last, level, mode = "full")
+    )
+
+} else {series_stats <- NULL}
+  
+ #__________________________________________________________________________________________________________
+  # End of series stats code 
   
   y_col_name <- if (normalise_ENSO)  "index.norm" else "index"
   myColors <- c('dodgerblue', '#F5B915FF', '#08235FFF', '#4D9221',  "purple4" ,  "violetred")
@@ -254,6 +300,8 @@ process_idx <- function(idx, series_set) {
     
   }
   
+  g@meta$series_stats <- series_stats
+
   return(g)
   
 }
