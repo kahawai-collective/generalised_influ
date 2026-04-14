@@ -324,3 +324,154 @@ boxplot_DHARMares <- function(diag_metrics) {
   )
   return(plot_list)
 }
+
+
+
+########################################################################################3
+# Spatial residuals. Very raw draft. 14 Apr.
+#########################################################################################
+summary(fit)
+data <- Ginflu::get_preds(fit)$preds
+get_preds()
+
+dharma <- simulateResiduals(fit)
+
+grouping <- paste(data$start_latitude, data$start_longitude)
+
+
+simulationOutput_grouped <- recalculateResiduals(dharma, group = paste(data$start_latitude, data$start_longitude))
+
+# Get unique coordinates for the aggregated groups
+
+group_coords <- data %>%
+  group_by(start_latitude, start_longitude) %>%
+  summarise(count = n(), x = mean(start_latitude), y = mean(start_longitude))
+
+nrow(group_coords)
+# Run the spatial autocorrelation test on the grouped object
+testSpatialAutocorrelation(simulationOutput_grouped, 
+                           x = group_coords$x, 
+                           y = group_coords$y)
+
+testSpatialAutocorrelation(dharma$dharma_res, x = data$start_latitude, y = data$start_longitude,
+  distMat = NULL, 
+  plot = TRUE)
+
+
+#_______________ new try _____________________________________
+dharma <- simulateResiduals(fit)
+years <- sort(unique(data$fyear))
+data <- model_data
+data <- data %>%
+  mutate(lat_t = sign(start_latitude) * (floor(abs(start_latitude)/size)+1)*size,
+             lon_t = sign(start_longitude) * floor(abs(start_longitude)/size)*size,
+            loc = paste(lat_t, lon_t, sep = "_")) 
+
+par(mfrow = c(2, 3)) 
+
+results_list <- lapply(years, function(yr) {
+  
+  # 1. Mask
+  year_mask <- data$fyear == yr
+  data_year <- data[year_mask, ]
+  
+  
+  
+  # 3. Recalculate residuals using the rounded ID
+  res_year_grouped <- recalculateResiduals(dharma, 
+                                           sel = year_mask)
+  
+  res_spatial_aggregated <- recalculateResiduals(res_year_grouped, group = data_year$loc)
+  
+  
+  # 4. Get unique coordinates using the SAME rounded ID
+  coords_year <- data_year %>%
+    group_by(loc) %>%
+    summarise(x = first(lon_t), 
+              y = first(lat_t), 
+              .groups = 'drop') %>%
+    mutate(dharma_res  = res_spatial_aggregated$scaledResiduals)
+  
+  # FINAL SANITY CHECK
+  n_res <- length(res_spatial_aggregated$scaledResiduals)
+  n_coords <- nrow(coords_year)
+  
+  if(n_res != n_coords) {
+     message(sprintf("Year %s still mismatched: Res %d vs Coords %d. Check for duplicate IDs.", yr, n_res, n_coords))
+     return(NULL)
+  }
+  
+  # 5. Run test
+  test_out <- testSpatialAutocorrelation(
+    res_spatial_aggregated, 
+    x = coords_year$x, 
+    y = coords_year$y, 
+    plot = F
+  )
+  
+  title(main = paste("Year:", yr))
+  print(paste("Year:", yr, '\n\n', test_out))
+
+  ggplot(coords_year) +
+      geom_tile(aes(x = x, y = y, fill=dharma_res)) +
+      scale_fill_gradient2('Coefficient',
+                           low="blue",
+                           mid='grey',
+                           high="red") +
+      geom_sf(data = my_coasts)
+      geom_polygon(data=clipPolys(coast,
+                                  ylim=box[1:2],
+                                  xlim=box[3:4]),
+                   aes(x=X,y=Y,group=PID),
+                   fill='white',
+                   colour="grey80") +
+      scale_y_continuous("",
+                         limits=box[1:2],
+                         expand=c(0,0)) +
+      scale_x_continuous("",
+                         limits=box[3:4],
+                         expand=c(0,0)) +
+      labs(x='',
+           y='') +
+      coord_map(project="mercator") +
+      theme_bw()
+
+  return(test_out)
+
+})
+
+# Reset the plot layout to default (1x1)
+par(mfrow = c(1, 1))
+#________________________________________________________________________
+
+# library(sdmTMB)
+library(sf)
+library(terra)
+library(tidyterra)     # For plotting raster tiles with ggplot2
+# library(INLA)
+# library(fmesher)
+# library(inlabru)
+# 
+# # Prepare NZ map
+# 
+load("CPUE-ML/spatial/coastline.nz.Rdata")
+data <- Ginflu::get_preds(fit)$preds
+# # make data spatial
+model_data_sp <- st_as_sf(data, coords = c("start_longitude", "start_latitude"), crs = 4326, remove = FALSE) %>%
+  st_make_valid()
+
+model_data_3994 <- st_transform(model_data_sp, 3994) # 3994 NIWA projection
+bbox <- create_bbox(model_data_3994)
+
+# crop coastline and bathymetry to bbox
+my_coasts <- coastline.nz %>%
+  st_transform(3994) %>%
+  st_make_valid() %>%
+  st_crop(bbox) 
+# 
+# my_coasts_4326 <- my_coasts %>%
+#   st_transform(4326)
+# 
+# check how this looks:
+ggplot() +
+  geom_sf(data = my_coasts)
