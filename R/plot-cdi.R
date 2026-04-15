@@ -7,7 +7,6 @@
 #' @param fit A fitted model object (e.g., from `glm` or `gam`).
 #' @param year Character string. The name of the temporal column (e.g., "fyear")
 #'   to be used as the focus variable on the y-axis of the distribution plot.
-#' @param predictor
 #' @import ggplot2
 #' @import dplyr
 #' @importFrom patchwork plot_layout
@@ -583,7 +582,6 @@ plot_cdi <- function(preds_list, compare_preds_list = NULL) {
 #' @param fit A fitted model object (e.g., from `glm` or `gam`).
 #' @param year Character string. The name of the temporal column (e.g., "fyear")
 #'   to be used as the focus variable on the y-axis of the distribution plot.
-#' @param predictor
 #' @import ggplot2
 #' @import dplyr
 #' @importFrom patchwork plot_layout

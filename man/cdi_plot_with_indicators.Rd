@@ -9,12 +9,10 @@ cdi_plot_with_indicators(preds_list, compare_preds_list = NULL)
 \arguments{
 \item{fit}{A fitted model object (e.g., from `glm` or `gam`).}
 
-\item{year}{Character string. The name of the temporal column (e.g., "fyear") 
+\item{year}{Character string. The name of the temporal column (e.g., "fyear")
 to be used as the focus variable on the y-axis of the distribution plot.}
-
-\item{predictor}{}
 }
 \description{
-Generates a multi-pane layout visualising the coefficients, data distribution, 
+Generates a multi-pane layout visualising the coefficients, data distribution,
 and relative influence of a model predictor.
 }

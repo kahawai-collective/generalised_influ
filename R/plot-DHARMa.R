@@ -362,12 +362,38 @@ boxplot_DHARMares <- function(diag_metrics) {
   return(plot_list)
 }
 
-
-#################################################################################################
-# plot spatial residuals draft 15 APr
-#################################################################################################
-
-spatial_DHARMares <- function(diag_metrics, coastline = NULL, time_periods = 'all', grid_size=10, thresh=30) {
+#' Calculate and Plot Spatial DHARMa Residuals
+#'
+#' @description 
+#' This function takes DHARMa diagnostic metrics, aggregates them onto a 
+#' spatial grid, and calculates distance-based spatial autocorrelation (Moran's I) 
+#' for specified time periods. It filters out grid cells with sparse data and outputs 
+#' a combined `patchwork` spatial map of the residuals. 
+#'
+#' @param diag_metrics A list containing DHARMa diagnostic output (must include a nested 
+#'   dataframe `$diag_metrics` with spatial coordinates `lon`, `lat` and time identifier `fyear`).
+#' @param coastline An \code{sf} object representing the land/coastline to be masked over the plot. 
+#'   Defaults to \code{NULL} (no coastline plotted).
+#' @param time_periods A vector, list of vectors, or the string \code{"all"}. Defines the time 
+#'   blocks to iterate over. If \code{"all"} (default), iterates through all unique years.
+#' @param grid_size Numeric. The side length of the spatial grid cells in kilometers. 
+#'   Defaults to \code{10}.
+#' @param thresh Numeric. The minimum number of observations required in a grid cell 
+#'   for it to be included in the spatial analysis. Defaults to \code{3}.
+#'
+#' @return A \code{patchwork} plot object containing the combined spatial maps. A dataframe 
+#'   summarising the Moran's I p-values for each time block is attached as an attribute 
+#'   and can be accessed via \code{plot_object@meta$p_val_df}.
+#' 
+#' @import sf
+#' @import dplyr
+#' @import ggplot2
+#' @import patchwork
+#' @importFrom DHARMa recalculateResiduals testSpatialAutocorrelation
+#' @export
+#'
+#' 
+spatial_DHARMares <- function(diag_metrics, coastline = NULL, time_periods = 'all', grid_size=10, thresh=3) {
 
   # ---- prepare map data ------
 data_sf <- st_as_sf(diag_metrics$diag_metrics, coords = c("lon", "lat"), crs = 4326, remove = FALSE) %>%
@@ -392,28 +418,49 @@ coastline <- coastline %>%
   st_crop(bbox)
   }
 
-  # ---- assign time periods to iterate through ------
+  # ---- Assign time periods to iterate through ------
 if(identical(time_periods, "all")) time_periods <- sort(unique(data_sf$fyear))
   
-  # ---- loop through time periods to generale plots ------
+  # ---- Loop through time periods to generale plots ------
 
 plots_list <- lapply(time_periods, function(period) {
   
   # Filter data to selected timeframe
   time_mask <- data_sf$fyear %in% period
-  data_this_period <- data_sf[time_mask, ]
+
+  # Threshold Filtering
+    # Find grid IDs in this period that meet the threshold
+    valid_grids <- data_sf[time_mask, ] %>%
+      st_drop_geometry() %>%
+      count(grid_id) %>%
+      filter(n >= thresh) %>%
+      pull(grid_id)
+      
+    # Update mask to only include valid grids
+    time_mask <- time_mask & (data_sf$grid_id %in% valid_grids)
+    data_this_period <- data_sf[time_mask, ]
   
-  # Recalculate dharma residulals filtering for time period and aggregating by grid cell
+  # Label formatting
+ period_label <- if (length(period)>1) paste(range(period), collapse = "-") else period
+  
+    if(sum(time_mask) == 0) {
+      warning(paste("Time period", period_label, "dropped: No grid cells met the threshold of", thresh))
+      return(NULL) 
+    }
+  
+  # Recalculate DHARMa residulals, while filtering for time period, minimum obs, and aggregating by grid cell
   dharma_recalculated <- recalculateResiduals(diag_metrics, sel = time_mask, group = data_sf$grid_id)
   
-  # Get centroids for the spatial autocorrelation test
-  # DHARMa needs coordinates for the groups
+    
+  # Run Moran's I test
+    # Get centroids for the spatial autocorrelation test
+    # DHARMa needs coordinates for the groups
+
   grid_centers <- grid %>%
     filter(grid_id %in% data_this_period$grid_id) %>%
     st_centroid() %>%
     st_coordinates()  
-  
-  # Run Moran's I test
+
   Moran_test <- testSpatialAutocorrelation(
     dharma_recalculated, 
     x = grid_centers[,1], 
@@ -432,16 +479,13 @@ plots_list <- lapply(time_periods, function(period) {
 plot_grid <- grid %>%
   inner_join(res_df, by = "grid_id")
 
-  
- if (length(period)>1) period_label <- paste(range(period), collapse = "-") else period_label <- period
-
 # ----- plot code -----
  p <- ggplot() +
     geom_sf(data = plot_grid, aes(fill = dharma_res), color = NA) + 
    (if(!is.null(coastline)){
   geom_sf(data = coastline, fill = "grey80", color = "grey40") 
    }) +
-    scale_fill_gradient2('DHARMa Residual',
+    scale_fill_gradient2('Residual',
                          low = "red",
                          mid = 'grey90',
                          high = "blue",
@@ -452,16 +496,21 @@ plot_grid <- grid %>%
              expand = FALSE) +
     theme_bw() +
     labs(title = paste0("Time period: ", period_label, 
-                       "\n Moran's I p-val: ", p_val_text))
+                       "\nMoran's I p-val: ", p_val_text))
   
   
     # store p-value for further use e.g. in traffic light table    
-p@meta$MoransIpval <- test_out$p.value
+attr(p, "MoransIpval") <- Moran_test$p.value
+    attr(p, "period") <- period_label
   return(p)
 
 })
   
-  wrap_plots(plots_list, ncol = 2) + 
+  plots_list <- Filter(Negate(is.null), plots_list)
+
+  # ---- Combine plots ------
+
+  combined_plot <- wrap_plots(plots_list, ncol = 2) + 
   plot_layout(guides = 'collect') +
     plot_annotation(
     title = "DHARMa Moran's I test for distance-based autocorrelation",
@@ -469,4 +518,12 @@ p@meta$MoransIpval <- test_out$p.value
   ) & 
   theme(legend.position = 'right')
   
+  
+  # ---- Extract Metadata Table ------
+ combined_plot@meta$p_val_df <- data.frame(
+    period = sapply(plots_list, function(x) attr(x, "period")),
+    p_value = sapply(plots_list, function(x) attr(x, "MoransIpval"))
+  )
+
+  return (combined_plot)
 }
