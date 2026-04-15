@@ -13,6 +13,27 @@
 #'
 
 get_DHARMAres <- function(fit) {
+ 
+  # Extract original data
+  raw_data <- fit$data
+
+  if (is.null(raw_data) && inherits(fit, "survreg")) {
+    raw_data <- eval(fit$call$data)
+  }
+
+  # Allow start_latitude and start_longitude in place of lat/lon
+  if (!(("lat" %in% colnames(raw_data)) & ("lon" %in% colnames(raw_data)))) {
+    raw_data$lat <- raw_data$start_latitude
+    raw_data$lon <- raw_data$start_longitude
+  }
+
+  # Subset original data to predictors plus the coordinates even if they were not used as predictors
+  raw_data <- subset(
+    raw_data,
+    select = union(all.vars(delete.response(terms(fit))), c('lat', 'lon'))
+  )
+
+  # Build dataframe to store diagnostics
   diag_metrics <- data.frame(
     # the reason for sub-setting to [1:nrow(data)] is to accommodate survreg which has extra column in response
     observed = as.vector(model.response(model.frame(fit)))[
@@ -21,17 +42,12 @@ get_DHARMAres <- function(fit) {
     fitted = predict(fit, type = "response")
   )
 
-  raw_data <- fit$data
-
-  if (is.null(raw_data) && inherits(fit, "survreg")) {
-    raw_data <- eval(fit$call$data)
-  }
-
-  raw_data <- subset(raw_data, select = all.vars(delete.response(terms(fit))))
-
   diag_metrics <- cbind(diag_metrics, raw_data)
-
   n <- nrow(diag_metrics)
+  #_____________________________________________________________________________
+  # Generate DHARMa Object
+  #_____________________________________________________________________________
+
   if (inherits(fit, "survreg")) {
     simulatedResponse <- replicate(
       1000,
@@ -42,36 +58,54 @@ get_DHARMAres <- function(fit) {
       )
     )
 
-    DHARMa <- DHARMa::createDHARMa(
+    DHARMa_obj <- DHARMa::createDHARMa(
       simulatedResponse = simulatedResponse,
       observedResponse = diag_metrics$observed,
       fittedPredictedResponse = diag_metrics$fitted,
       seed = 123
     )
-    diag_metrics$dharma_res <- DHARMa$scaledResiduals
   } else {
-    diag_metrics$dharma_res <- residuals(DHARMa::simulateResiduals(
+    DHARMa_obj <- DHARMa::simulateResiduals(
       fit,
       n = 1000,
       refit = FALSE,
       plot = FALSE,
       seed = 123
-    ))
+    )
   }
+
+  # Extrac all recessary cells from DHARMa object
+
+  diag_metrics$scaledResiduals <- residuals(DHARMa_obj)
+  diag_metrics$observedResponse <- DHARMa_obj$observedResponse
+  diag_metrics$fittedPredictedResponse <- DHARMa_obj$fittedPredictedResponse
+  diag_metrics$simulatedResponse <- DHARMa_obj$simulatedResponse
 
   # Transform fitted values to ranks
   diag_metrics <- diag_metrics %>%
     mutate(
       rank_fitted = rank(fitted, ties.method = "average") / n,
       is_outlier = factor(
-        dharma_res == 0 | dharma_res == 1,
+        scaledResiduals == 0 | scaledResiduals == 1,
         levels = c(FALSE, TRUE)
       )
     )
+attr(diag_metrics, "predictors") <- all.vars(delete.response(terms(fit)))
+  
+  out <- list(
+    scaledResiduals = diag_metrics$scaledResiduals,
+    observedResponse = diag_metrics$observedResponse,
+    fittedPredictedResponse = diag_metrics$fittedPredictedResponse,
+    simulatedResponse = diag_metrics$simulatedResponse,
+    refit = DHARMa_obj$refit,
+    integerResponse = DHARMa_obj$integerResponse,
+    diag_metrics = diag_metrics ,
+    predictors = all.vars(delete.response(terms(fit)))
+  )
 
-  attr(diag_metrics, "predictors") <- all.vars(delete.response(terms(fit)))
+  class(out) <- "DHARMa"
 
-  return(diag_metrics)
+  return(out)
 }
 
 #' Plot DHARMa Residuals for GLM2 and Survreg
@@ -89,13 +123,15 @@ get_DHARMAres <- function(fit) {
 #'
 #'
 plot_DHARMares <- function(diag_metrics) {
+
+  diag_metrics <- diag_metrics$diag_metrics
   #______________________________________________________________________________
   #  Prepare residuals
   #______________________________________________________________________________
 
   # prepare quantile test and colour for quantile regression line
   q_test <- DHARMa::testQuantiles(
-    diag_metrics$dharma_res,
+    diag_metrics$scaledResiduals,
     diag_metrics$rank_fitted,
     plot = F
   )
@@ -109,7 +145,7 @@ plot_DHARMares <- function(diag_metrics) {
   # (1) ---Histogram of residuals versus uniform distribution---
   d1 <- ggplot(diag_metrics) +
     geom_histogram(
-      aes(x = qnorm(dharma_res), y = after_stat(density)),
+      aes(x = qnorm(scaledResiduals), y = after_stat(density)),
       stat = 'bin',
       binwidth = 0.05,
       fill = NA,
@@ -130,7 +166,7 @@ plot_DHARMares <- function(diag_metrics) {
   # built-in function from DHARMa package, but result cannot be stored and used in patchwork
   # d2 <- DHARMa::plotResiduals(DHARMa, main = NULL)
 
-  d2 <- ggplot(diag_metrics, aes(x = rank_fitted, y = dharma_res)) +
+  d2 <- ggplot(diag_metrics, aes(x = rank_fitted, y = scaledResiduals)) +
     geom_point(
       aes(shape = is_outlier, color = is_outlier, alpha = is_outlier),
       fill = 'white',
@@ -165,7 +201,7 @@ plot_DHARMares <- function(diag_metrics) {
 
   d3 <- ggplot(diag_metrics) +
     geom_qq(
-      aes(sample = dharma_res),
+      aes(sample = scaledResiduals),
       distribution = stats::qunif,
       dparams = list(min = 0, max = 1),
       cex = 0.3
@@ -223,13 +259,14 @@ plot_DHARMares <- function(diag_metrics) {
 #'
 #' @export
 boxplot_DHARMares <- function(diag_metrics) {
-  term_labels <- attr(diag_metrics, 'predictors')
+  diag_metrics_df <- diag_metrics$diag_metrics
+  term_labels <- diag_metrics$predictors
 
   plot_list <- setNames(
     lapply(term_labels, function(term_label) {
       # ----- Prepare data -----
       # Extract vector of predictor values
-      pred_vec = diag_metrics[[term_label]]
+      pred_vec = diag_metrics_df[[term_label]]
 
       # Numeric terms are cut into factors
       if (
@@ -256,7 +293,7 @@ boxplot_DHARMares <- function(diag_metrics) {
 
       # Create plotting dataframe
       plot_df <- data.frame(
-        residuals = diag_metrics$dharma_res,
+        residuals = diag_metrics_df$scaledResiduals,
         predictor = pred_vec
       ) %>%
         add_count(predictor, name = "n_obs")
@@ -265,7 +302,7 @@ boxplot_DHARMares <- function(diag_metrics) {
       out = list()
 
       out$uniformity$details = suppressWarnings(by(
-        diag_metrics$dharma_res,
+        diag_metrics_df$scaledResiduals,
         pred_vec,
         ks.test,
         'punif',
@@ -326,152 +363,110 @@ boxplot_DHARMares <- function(diag_metrics) {
 }
 
 
+#################################################################################################
+# plot spatial residuals draft 15 APr
+#################################################################################################
 
-########################################################################################3
-# Spatial residuals. Very raw draft. 14 Apr.
-#########################################################################################
-summary(fit)
-data <- Ginflu::get_preds(fit)$preds
-get_preds()
+spatial_DHARMares <- function(diag_metrics, coastline = NULL, time_periods = 'all', grid_size=10, thresh=30) {
 
-dharma <- simulateResiduals(fit)
-
-grouping <- paste(data$start_latitude, data$start_longitude)
-
-
-simulationOutput_grouped <- recalculateResiduals(dharma, group = paste(data$start_latitude, data$start_longitude))
-
-# Get unique coordinates for the aggregated groups
-
-group_coords <- data %>%
-  group_by(start_latitude, start_longitude) %>%
-  summarise(count = n(), x = mean(start_latitude), y = mean(start_longitude))
-
-nrow(group_coords)
-# Run the spatial autocorrelation test on the grouped object
-testSpatialAutocorrelation(simulationOutput_grouped, 
-                           x = group_coords$x, 
-                           y = group_coords$y)
-
-testSpatialAutocorrelation(dharma$dharma_res, x = data$start_latitude, y = data$start_longitude,
-  distMat = NULL, 
-  plot = TRUE)
-
-
-#_______________ new try _____________________________________
-dharma <- simulateResiduals(fit)
-years <- sort(unique(data$fyear))
-data <- model_data
-data <- data %>%
-  mutate(lat_t = sign(start_latitude) * (floor(abs(start_latitude)/size)+1)*size,
-             lon_t = sign(start_longitude) * floor(abs(start_longitude)/size)*size,
-            loc = paste(lat_t, lon_t, sep = "_")) 
-
-par(mfrow = c(2, 3)) 
-
-results_list <- lapply(years, function(yr) {
-  
-  # 1. Mask
-  year_mask <- data$fyear == yr
-  data_year <- data[year_mask, ]
-  
-  
-  
-  # 3. Recalculate residuals using the rounded ID
-  res_year_grouped <- recalculateResiduals(dharma, 
-                                           sel = year_mask)
-  
-  res_spatial_aggregated <- recalculateResiduals(res_year_grouped, group = data_year$loc)
-  
-  
-  # 4. Get unique coordinates using the SAME rounded ID
-  coords_year <- data_year %>%
-    group_by(loc) %>%
-    summarise(x = first(lon_t), 
-              y = first(lat_t), 
-              .groups = 'drop') %>%
-    mutate(dharma_res  = res_spatial_aggregated$scaledResiduals)
-  
-  # FINAL SANITY CHECK
-  n_res <- length(res_spatial_aggregated$scaledResiduals)
-  n_coords <- nrow(coords_year)
-  
-  if(n_res != n_coords) {
-     message(sprintf("Year %s still mismatched: Res %d vs Coords %d. Check for duplicate IDs.", yr, n_res, n_coords))
-     return(NULL)
-  }
-  
-  # 5. Run test
-  test_out <- testSpatialAutocorrelation(
-    res_spatial_aggregated, 
-    x = coords_year$x, 
-    y = coords_year$y, 
-    plot = F
-  )
-  
-  title(main = paste("Year:", yr))
-  print(paste("Year:", yr, '\n\n', test_out))
-
-  ggplot(coords_year) +
-      geom_tile(aes(x = x, y = y, fill=dharma_res)) +
-      scale_fill_gradient2('Coefficient',
-                           low="blue",
-                           mid='grey',
-                           high="red") +
-      geom_sf(data = my_coasts)
-      geom_polygon(data=clipPolys(coast,
-                                  ylim=box[1:2],
-                                  xlim=box[3:4]),
-                   aes(x=X,y=Y,group=PID),
-                   fill='white',
-                   colour="grey80") +
-      scale_y_continuous("",
-                         limits=box[1:2],
-                         expand=c(0,0)) +
-      scale_x_continuous("",
-                         limits=box[3:4],
-                         expand=c(0,0)) +
-      labs(x='',
-           y='') +
-      coord_map(project="mercator") +
-      theme_bw()
-
-  return(test_out)
-
-})
-
-# Reset the plot layout to default (1x1)
-par(mfrow = c(1, 1))
-#________________________________________________________________________
-
-# library(sdmTMB)
-library(sf)
-library(terra)
-library(tidyterra)     # For plotting raster tiles with ggplot2
-# library(INLA)
-# library(fmesher)
-# library(inlabru)
-# 
-# # Prepare NZ map
-# 
-load("CPUE-ML/spatial/coastline.nz.Rdata")
-data <- Ginflu::get_preds(fit)$preds
-# # make data spatial
-model_data_sp <- st_as_sf(data, coords = c("start_longitude", "start_latitude"), crs = 4326, remove = FALSE) %>%
+  # ---- prepare map data ------
+data_sf <- st_as_sf(diag_metrics$diag_metrics, coords = c("lon", "lat"), crs = 4326, remove = FALSE) %>%
+  st_transform(3994) %>%
   st_make_valid()
 
-model_data_3994 <- st_transform(model_data_sp, 3994) # 3994 NIWA projection
-bbox <- create_bbox(model_data_3994)
+grid_size <- grid_size*1000 # Define side length: convert km to meters for the EPSG:3994 projection
 
-# crop coastline and bathymetry to bbox
-my_coasts <- coastline.nz %>%
+grid <- st_make_grid(data_sf, cellsize = grid_size, square = TRUE) %>%
+  st_sf() %>%
+  mutate(grid_id = row_number())
+
+data_sf <- st_join(data_sf, grid, join = st_intersects)
+
+bbox <- st_bbox(grid)
+  
+  if(!is.null(coastline)){
+# Crop coastline to bbox
+coastline <- coastline %>%
   st_transform(3994) %>%
   st_make_valid() %>%
-  st_crop(bbox) 
-# 
-# my_coasts_4326 <- my_coasts %>%
-#   st_transform(4326)
-# 
-# check how this looks:
-ggplot() +
-  geom_sf(data = my_coasts)
+  st_crop(bbox)
+  }
+
+  # ---- assign time periods to iterate through ------
+if(identical(time_periods, "all")) time_periods <- sort(unique(data_sf$fyear))
+  
+  # ---- loop through time periods to generale plots ------
+
+plots_list <- lapply(time_periods, function(period) {
+  
+  # Filter data to selected timeframe
+  time_mask <- data_sf$fyear %in% period
+  data_this_period <- data_sf[time_mask, ]
+  
+  # Recalculate dharma residulals filtering for time period and aggregating by grid cell
+  dharma_recalculated <- recalculateResiduals(diag_metrics, sel = time_mask, group = data_sf$grid_id)
+  
+  # Get centroids for the spatial autocorrelation test
+  # DHARMa needs coordinates for the groups
+  grid_centers <- grid %>%
+    filter(grid_id %in% data_this_period$grid_id) %>%
+    st_centroid() %>%
+    st_coordinates()  
+  
+  # Run Moran's I test
+  Moran_test <- testSpatialAutocorrelation(
+    dharma_recalculated, 
+    x = grid_centers[,1], 
+    y = grid_centers[,2],
+    plot = F
+  )
+  p_val_text <- if(Moran_test$p.value < 0.001) "< 0.001" else round(Moran_test$p.value, 3)
+  
+  # bind together grid ids and DHARMa resids by grid
+  res_df <- data.frame(
+  grid_id = sort(unique(data_sf$grid_id[time_mask])),
+  dharma_res = dharma_recalculated$scaledResiduals
+)
+    
+# Join back to the grid for plotting
+plot_grid <- grid %>%
+  inner_join(res_df, by = "grid_id")
+
+  
+ if (length(period)>1) period_label <- paste(range(period), collapse = "-") else period_label <- period
+
+# ----- plot code -----
+ p <- ggplot() +
+    geom_sf(data = plot_grid, aes(fill = dharma_res), color = NA) + 
+   (if(!is.null(coastline)){
+  geom_sf(data = coastline, fill = "grey80", color = "grey40") 
+   }) +
+    scale_fill_gradient2('DHARMa Residual',
+                         low = "red",
+                         mid = 'grey90',
+                         high = "blue",
+                         midpoint = 0.5, 
+                        limits = c(0, 1)) +
+    coord_sf(xlim = c(bbox["xmin"], bbox["xmax"]),
+             ylim = c(bbox["ymin"], bbox["ymax"]),
+             expand = FALSE) +
+    theme_bw() +
+    labs(title = paste0("Time period: ", period_label, 
+                       "\n Moran's I p-val: ", p_val_text))
+  
+  
+    # store p-value for further use e.g. in traffic light table    
+p@meta$MoransIpval <- test_out$p.value
+  return(p)
+
+})
+  
+  wrap_plots(plots_list, ncol = 2) + 
+  plot_layout(guides = 'collect') +
+    plot_annotation(
+    title = "DHARMa Moran's I test for distance-based autocorrelation",
+    theme = theme(plot.title = element_text(size = 16, face = "bold"))
+  ) & 
+  theme(legend.position = 'right')
+  
+}
