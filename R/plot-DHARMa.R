@@ -491,12 +491,19 @@ plot_grid <- grid %>%
                          high = "blue",
                          midpoint = 0.5, 
                         limits = c(0, 1)) +
-    coord_sf(xlim = c(bbox["xmin"], bbox["xmax"]),
+   scale_x_continuous(n.breaks = 4) +
+   scale_y_continuous(n.breaks = 4) +
+   coord_sf(xlim = c(bbox["xmin"], bbox["xmax"]),
              ylim = c(bbox["ymin"], bbox["ymax"]),
              expand = FALSE) +
-    theme_bw() +
-    labs(title = paste0("Time period: ", period_label, 
-                       "\nMoran's I p-val: ", p_val_text))
+   labs(title = paste0("Time period: ", period_label, 
+                       "\nMoran's I p-val: ", p_val_text)) +
+   theme_bw() +
+   theme(
+      plot.title = element_text(size = 8, lineheight = 1.1, margin = margin(b = 5)),
+      axis.text.x = element_text(angle = 0, hjust = 0.5, size = 8), 
+      axis.text.y = element_text(angle = 90, hjust = 0.5, size = 8) 
+    )
   
   
     # store p-value for further use e.g. in traffic light table    
