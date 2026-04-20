@@ -21,10 +21,19 @@ get_DHARMAres <- function(fit) {
     raw_data <- eval(fit$call$data)
   }
 
-  # Allow start_latitude and start_longitude in place of lat/lon
+  # Identify lat and lon columns in a dataset (could be start_latitude, mean_latitude, etc)
   if (!(("lat" %in% colnames(raw_data)) & ("lon" %in% colnames(raw_data)))) {
-    raw_data$lat <- raw_data$start_latitude
-    raw_data$lon <- raw_data$start_longitude
+    
+    for (coord in c("lat", "lon")) {
+            matches <- grep(coord, colnames(raw_data), ignore.case = TRUE, value = TRUE)
+    
+    if (length(matches) > 0) {
+      raw_data[[coord]] <- raw_data[[matches[1]]]
+      message("Notice: Auto-assigned '", matches[1], "' as the ", coord, " column.")
+    } else {
+      stop("Error: No ", coord, " column found in the dataset.")
+    }
+  }
   }
 
   # Subset original data to predictors plus the coordinates even if they were not used as predictors
