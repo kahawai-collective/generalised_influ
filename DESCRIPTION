@@ -32,7 +32,8 @@ Imports:
     gtable,
     nlme,
     tidyr,
-    lubridate
+    lubridate,
+    scales
 Suggests: 
     knitr,
     tidyverse,

@@ -293,7 +293,7 @@ boxplot_DHARMares <- function(diag_metrics) {
 
       # Create plotting dataframe
       plot_df <- data.frame(
-        residuals = diag_metrics_df$scaledResiduals,
+        residuals = qnorm(diag_metrics_df$scaledResiduals),
         predictor = pred_vec
       ) %>%
         add_count(predictor, name = "n_obs")
@@ -349,7 +349,7 @@ boxplot_DHARMares <- function(diag_metrics) {
         aes(x = predictor, y = residuals, fill = predictor, alpha = n_obs)
       ) +
         geom_boxplot() +
-        geom_hline(yintercept = c(0.25, 0.5, 0.75), linetype = "dashed") +
+        geom_hline(yintercept = c(-2, 0, 2), linetype = "dashed") +
         scale_fill_manual(values = box_colors) +
         guides(fill = "none", alpha = "none") +
         labs(x = term_label, y = "DHARMa Residuals") +
@@ -393,22 +393,14 @@ boxplot_DHARMares <- function(diag_metrics) {
 #' @export
 #'
 #' 
-spatial_DHARMares <- function(diag_metrics, coastline = NULL, time_periods = 'all', grid_size=10, thresh=3) {
+spatial_DHARMares <- function(diag_metrics, coastline = NULL, time_periods = 'all', grid_size=10, thresh=3, sea_only = FALSE) {
 
   # ---- prepare map data ------
 data_sf <- st_as_sf(diag_metrics$diag_metrics, coords = c("lon", "lat"), crs = 4326, remove = FALSE) %>%
   st_transform(3994) %>%
   st_make_valid()
 
-grid_size <- grid_size*1000 # Define side length: convert km to meters for the EPSG:3994 projection
-
-grid <- st_make_grid(data_sf, cellsize = grid_size, square = TRUE) %>%
-  st_sf() %>%
-  mutate(grid_id = row_number())
-
-data_sf <- st_join(data_sf, grid, join = st_intersects)
-
-bbox <- st_bbox(grid)
+bbox <- st_bbox(data_sf)
   
   if(!is.null(coastline)){
 # Crop coastline to bbox
@@ -416,7 +408,22 @@ coastline <- coastline %>%
   st_transform(3994) %>%
   st_make_valid() %>%
   st_crop(bbox)
+     # Groom out data on land
+    if(sea_only) {
+      data_sf <- data_sf[lengths(st_intersects(data_sf, coastline)) == 0, ]
+      }
+  } else if (sea_only) {
+    warning("sea_only = TRUE was requested, but no coastline object was provided. Skipping land filter.")
   }
+  
+  grid_size <- grid_size*1000 # Define side length: convert km to meters for the EPSG:3994 projection
+
+grid <- st_make_grid(data_sf, cellsize = grid_size, square = TRUE) %>%
+  st_sf() %>%
+  mutate(grid_id = row_number())
+
+data_sf <- st_join(data_sf, grid, join = st_intersects)
+bbox <- st_bbox(grid)
 
   # ---- Assign time periods to iterate through ------
 if(identical(time_periods, "all")) time_periods <- sort(unique(data_sf$fyear))
@@ -467,12 +474,17 @@ plots_list <- lapply(time_periods, function(period) {
     y = grid_centers[,2],
     plot = F
   )
+
+
   p_val_text <- if(Moran_test$p.value < 0.001) "< 0.001" else round(Moran_test$p.value, 3)
-  
+
+  # Rescale Moran's I to Z value so that we can compare it across years
+  MoransI_z_score <- as.numeric((Moran_test$statistic["observed"] - Moran_test$statistic["expected"]) / Moran_test$statistic["sd"])
+
   # bind together grid ids and DHARMa resids by grid
   res_df <- data.frame(
   grid_id = sort(unique(data_sf$grid_id[time_mask])),
-  dharma_res = dharma_recalculated$scaledResiduals
+  dharma_norm = scales::squish(qnorm(dharma_recalculated$scaledResiduals), c(-4, 4), only.finite = FALSE)
 )
     
 # Join back to the grid for plotting
@@ -481,16 +493,18 @@ plot_grid <- grid %>%
 
 # ----- plot code -----
  p <- ggplot() +
-    geom_sf(data = plot_grid, aes(fill = dharma_res), color = NA) + 
+    geom_sf(data = plot_grid, 
+      aes(fill = dharma_norm),
+      color = NA) + 
    (if(!is.null(coastline)){
   geom_sf(data = coastline, fill = "grey80", color = "grey40") 
    }) +
-    scale_fill_gradient2('Residual',
-                         low = "red",
-                         mid = 'grey90',
-                         high = "blue",
-                         midpoint = 0.5, 
-                        limits = c(0, 1)) +
+    scale_fill_gradientn(
+    name = 'Residual',
+    colors = c("darkred", "tomato", "grey90","cornflowerblue", "darkblue"),
+    values = scales::rescale(c(-4, -2, 0, 2, 4)),
+    limits = c(-4, 4)    
+  ) +
    scale_x_continuous(n.breaks = 4) +
    scale_y_continuous(n.breaks = 4) +
    coord_sf(xlim = c(bbox["xmin"], bbox["xmax"]),
@@ -507,7 +521,7 @@ plot_grid <- grid %>%
   
   
     # store p-value for further use e.g. in traffic light table    
-attr(p, "MoransIpval") <- Moran_test$p.value
+attr(p, "MoransI_z_score") <- MoransI_z_score
     attr(p, "period") <- period_label
   return(p)
 
@@ -518,18 +532,14 @@ attr(p, "MoransIpval") <- Moran_test$p.value
   # ---- Combine plots ------
 
   combined_plot <- wrap_plots(plots_list, ncol = 2) + 
-  plot_layout(guides = 'collect') +
-    plot_annotation(
-    title = "DHARMa Moran's I test for distance-based autocorrelation",
-    theme = theme(plot.title = element_text(size = 16, face = "bold"))
-  ) & 
+  plot_layout(guides = 'collect')  & 
   theme(legend.position = 'right')
   
   
   # ---- Extract Metadata Table ------
- combined_plot@meta$p_val_df <- data.frame(
+ combined_plot@meta$MoransI_z_score <- data.frame(
     period = sapply(plots_list, function(x) attr(x, "period")),
-    p_value = sapply(plots_list, function(x) attr(x, "MoransIpval"))
+    p_value = sapply(plots_list, function(x) attr(x, "MoransI_z_score"))
   )
 
   return (combined_plot)
