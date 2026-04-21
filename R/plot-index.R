@@ -182,11 +182,14 @@ process_idx <- function(idx, series_set) {
     
   indices <- process_idx(cidx, CPUE_set)
   
-  if(!is.null(alt_CPUE1)) indices <- bind_rows(indices, process_idx(alt_CPUE1, series_alt1) %>% 
-                                                 mutate(Series = paste(Series, 'alt')))
+  if(!is.null(alt_CPUE1)) indices <- bind_rows(indices %>%
+    mutate(Series = paste(Series, 'UPDATE')), process_idx(alt_CPUE1, series_alt1))%>%
+    arrange(Series)
+    
   
-  if(!is.null(alt_CPUE2)) indices <- bind_rows(indices, process_idx(alt_CPUE2, series_alt2) %>% 
-                                                 mutate(Series = paste(Series, 'alt2')))
+  if(!is.null(alt_CPUE2)) indices <- bind_rows(indices %>% 
+    mutate(Series = paste(Series, 'UPDATE_2')), process_idx(alt_CPUE2, series_alt2) )%>%
+    arrange(Series)
     
   overlap <- indices %>%
     group_by(Series, Index) %>%
@@ -244,7 +247,7 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
     select(level, Series, index) %>%
           
     pivot_wider(names_from = Series, values_from = index) %>%
-    rename_with(~ ifelse(grepl("alt", .x), "last", "current"), 
+    rename_with(~ ifelse(grepl("UPDATE", .x), "current", "last"), 
                 .cols = -level) %>%
     arrange(level) %>%
     summarise(
@@ -259,9 +262,9 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
   # End of series stats code 
   
   y_col_name <- if (normalise_ENSO)  "index.norm" else "index"
-  myColors <- c('dodgerblue', '#F5B915FF', '#08235FFF', '#4D9221',  "purple4" ,  "violetred")
+  myColors <- c( '#F5B915FF', 'dodgerblue', '#08235FFF', '#4D9221',  "purple4" ,  "violetred")
   n_series <- length(unique(indices$Series))
-  
+  alpha <- ifelse(!is.null(alt_CPUE1), 0.6, 1)
   
   g <- ggplot(indices, aes(level, 
                            y = .data[[y_col_name]],
@@ -271,9 +274,6 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
                            shape = `Index type`,
                            col = Series, 
                            group = interaction(Series, `Index type`))) +
-    
-    geom_line() +
-    geom_point() +
     # Conditional Layers
     ( if (normalise_ENSO){
       scale_y_continuous("CPUE index", limits = c(-1.1, 1.1))
@@ -281,10 +281,11 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
       list(
         scale_y_continuous("CPUE index", limits = c(0, NA)),
         geom_hline(yintercept=1, linetype=3),
-        if(uncert)  geom_linerange()
+        if(uncert)  geom_linerange(alpha = alpha)
       )
     }) +
-    
+    geom_line(alpha = alpha) +
+    geom_point(alpha = alpha) +
     scale_x_continuous("Fishing year", breaks = unique(indices$level)) +
     scale_color_manual(values = myColors) +
     theme_cowplot() +
@@ -304,7 +305,7 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
 
   return(g)
   
-}
+  }
 
 
 #' Plot Status of the stock 

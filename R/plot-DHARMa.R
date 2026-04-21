@@ -405,9 +405,23 @@ boxplot_DHARMares <- function(diag_metrics) {
 spatial_DHARMares <- function(diag_metrics, coastline = NULL, time_periods = 'all', grid_size=10, thresh=3, sea_only = FALSE) {
 
   # ---- prepare map data ------
-data_sf <- st_as_sf(diag_metrics$diag_metrics, coords = c("lon", "lat"), crs = 4326, remove = FALSE) %>%
-  st_transform(3994) %>%
-  st_make_valid()
+  # Calculate extreme limits based on the data's distribution (use 3x IQR as a threshold)
+  q_lat <- quantile(diag_metrics$diag_metrics$lat, probs = c(0.25, 0.75), na.rm = TRUE)
+  iqr_lat <- diff(q_lat)
+  q_lon <- quantile(diag_metrics$diag_metrics$lon, probs = c(0.25, 0.75), na.rm = TRUE)
+  iqr_lon <- diff(q_lon)
+  
+  # Filter out the extreme spatial outliers
+  data_sf <- diag_metrics$diag_metrics %>%
+    drop_na(lat, lon) %>%
+    filter(
+      lat >= (q_lat[1] - 3 * iqr_lat) & lat <= (q_lat[2] + 3 * iqr_lat),
+      lon >= (q_lon[1] - 3 * iqr_lon) & lon <= (q_lon[2] + 3 * iqr_lon)
+    ) %>%
+    st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE) %>%
+    st_transform(3994) %>%
+    st_make_valid()
+
 
 bbox <- st_bbox(data_sf)
   
