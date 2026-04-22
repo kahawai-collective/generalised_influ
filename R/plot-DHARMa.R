@@ -358,7 +358,7 @@ boxplot_DHARMares <- function(diag_metrics) {
         aes(x = predictor, y = residuals, fill = predictor, alpha = n_obs)
       ) +
         geom_boxplot() +
-        geom_hline(yintercept = c(-2, 0, 2), linetype = "dashed") +
+        geom_hline(yintercept = c(-1.96, 0, 1.96), linetype = "dashed") +
         scale_fill_manual(values = box_colors) +
         guides(fill = "none", alpha = "none") +
         labs(x = term_label, y = "DHARMa Residuals") +
