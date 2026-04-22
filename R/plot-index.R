@@ -264,7 +264,7 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
   y_col_name <- if (normalise_ENSO)  "index.norm" else "index"
   myColors <- c( '#F5B915FF', 'dodgerblue', '#08235FFF', '#4D9221',  "purple4" ,  "violetred")
   n_series <- length(unique(indices$Series))
-  alpha <- ifelse(!is.null(alt_CPUE1), 0.6, 1)
+  
   
   g <- ggplot(indices, aes(level, 
                            y = .data[[y_col_name]],
@@ -281,11 +281,11 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
       list(
         scale_y_continuous("CPUE index", limits = c(0, NA)),
         geom_hline(yintercept=1, linetype=3),
-        if(uncert)  geom_linerange(alpha = alpha)
+        if(uncert)  geom_linerange()
       )
     }) +
-    geom_line(alpha = alpha) +
-    geom_point(alpha = alpha) +
+    geom_line() +
+    geom_point() +
     scale_x_continuous("Fishing year", breaks = unique(indices$level)) +
     scale_color_manual(values = myColors) +
     theme_cowplot() +

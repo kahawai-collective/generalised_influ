@@ -413,7 +413,8 @@ spatial_DHARMares <- function(diag_metrics, coastline = NULL, time_periods = 'al
   
   # Filter out the extreme spatial outliers
   data_sf <- diag_metrics$diag_metrics %>%
-    drop_na(lat, lon) %>%
+    mutate(orig_row_id = row_number()) %>%
+    # drop_na(lat, lon) %>%
     filter(
       lat >= (q_lat[1] - 3 * iqr_lat) & lat <= (q_lat[2] + 3 * iqr_lat),
       lon >= (q_lon[1] - 3 * iqr_lon) & lon <= (q_lon[2] + 3 * iqr_lon)
@@ -445,8 +446,13 @@ grid <- st_make_grid(data_sf, cellsize = grid_size, square = TRUE) %>%
   st_sf() %>%
   mutate(grid_id = row_number())
 
-data_sf <- st_join(data_sf, grid, join = st_intersects)
-bbox <- st_bbox(grid)
+ # Filtering for min recods here so that bbox zooms in on the data.  
+data_sf <- st_join(data_sf, grid, join = st_intersects) %>%
+  group_by(grid_id) %>%
+  filter(n() >= thresh) %>%
+  ungroup()
+  
+bbox <- st_bbox(data_sf)
 
   # ---- Assign time periods to iterate through ------
 if(identical(time_periods, "all")) time_periods <- sort(unique(data_sf$fyear))
@@ -455,31 +461,32 @@ if(identical(time_periods, "all")) time_periods <- sort(unique(data_sf$fyear))
 
 plots_list <- lapply(time_periods, function(period) {
   
-  # Filter data to selected timeframe
-  time_mask <- data_sf$fyear %in% period
+  # Filter data to selected timeframe and metting the threshold
 
-  # Threshold Filtering
-    # Find grid IDs in this period that meet the threshold
-    valid_grids <- data_sf[time_mask, ] %>%
-      st_drop_geometry() %>%
-      count(grid_id) %>%
-      filter(n >= thresh) %>%
-      pull(grid_id)
-      
-    # Update mask to only include valid grids
-    time_mask <- time_mask & (data_sf$grid_id %in% valid_grids)
-    data_this_period <- data_sf[time_mask, ]
-  
+  data_this_period <- data_sf %>%
+    filter(fyear %in% period) %>%
+    group_by(grid_id) %>%
+    filter(n() >= thresh) %>%
+    ungroup()
+
   # Label formatting
  period_label <- if (length(period)>1) paste(range(period), collapse = "-") else period
   
-    if(sum(time_mask) == 0) {
+    if(nrow(data_this_period) == 0) {
       warning(paste("Time period", period_label, "dropped: No grid cells met the threshold of", thresh))
       return(NULL) 
     }
   
   # Recalculate DHARMa residulals, while filtering for time period, minimum obs, and aggregating by grid cell
-  dharma_recalculated <- recalculateResiduals(diag_metrics, sel = time_mask, group = data_sf$grid_id)
+  # This function needs length(group) to be the same as length of simulated residuals in diag_metrics
+  # Create an empty vector the exact length of the original DHARMa data
+  full_length_group <- rep(NA, length(diag_metrics$scaledResiduals))
+  
+  # 2. Inject the valid grid IDs into their exact original row positions
+  full_length_group[data_this_period$orig_row_id] <- data_this_period$grid_id
+
+  dharma_recalculated <- recalculateResiduals(diag_metrics, sel = data_this_period$orig_row_id,   
+    group = full_length_group)
   
     
   # Run Moran's I test
@@ -506,7 +513,7 @@ plots_list <- lapply(time_periods, function(period) {
 
   # bind together grid ids and DHARMa resids by grid
   res_df <- data.frame(
-  grid_id = sort(unique(data_sf$grid_id[time_mask])),
+  grid_id = sort(unique(data_this_period$grid_id)),
   dharma_norm = scales::squish(qnorm(dharma_recalculated$scaledResiduals), c(-4, 4), only.finite = FALSE)
 )
     
@@ -567,3 +574,4 @@ attr(p, "MoransI_z_score") <- MoransI_z_score
 
   return (combined_plot)
 }
+
