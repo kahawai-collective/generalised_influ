@@ -383,7 +383,7 @@ boxplot_DHARMares <- function(diag_metrics) {
 #'   dataframe `$diag_metrics` with spatial coordinates `lon`, `lat` and time identifier `fyear`).
 #' @param coastline An \code{sf} object representing the land/coastline to be masked over the plot. 
 #'   Defaults to \code{NULL} (no coastline plotted).
-#' @param time_periods A vector, list of vectors, or the string \code{"all"}. Defines the time 
+#' @param plot_time_periods A vector, list of vectors, or the string \code{"all"}. Defines the time 
 #'   blocks to iterate over. If \code{"all"} (default), iterates through all unique years.
 #' @param grid_size Numeric. The side length of the spatial grid cells in kilometers. 
 #'   Defaults to \code{10}.
@@ -402,7 +402,7 @@ boxplot_DHARMares <- function(diag_metrics) {
 #' @export
 #'
 #' 
-spatial_DHARMares <- function(diag_metrics, coastline = NULL, time_periods = 'all', grid_size=10, thresh=3, sea_only = FALSE) {
+spatial_DHARMares <- function(diag_metrics, coastline = NULL, plot_time_periods = 'all', grid_size=10, thresh=3, sea_only = FALSE) {
 
   # ---- prepare map data ------
   # Calculate extreme limits based on the data's distribution (use 3x IQR as a threshold)
@@ -455,11 +455,14 @@ data_sf <- st_join(data_sf, grid, join = st_intersects) %>%
 bbox <- st_bbox(data_sf)
 
   # ---- Assign time periods to iterate through ------
-if(identical(time_periods, "all")) time_periods <- sort(unique(data_sf$fyear))
+if(identical(plot_time_periods, "all")) plot_time_periods <- sort(unique(data_sf$fyear))
+  years_for_stats <- as.list(tail(sort(unique(as.numeric(as.character(data_sf$fyear)))), 10))
+
+  time_periods <- union(years_for_stats, plot_time_periods)
   
   # ---- Loop through time periods to generale plots ------
 
-plots_list <- lapply(time_periods, function(period) {
+results_list <- lapply(time_periods, function(period) {
   
   # Filter data to selected timeframe and metting the threshold
 
@@ -505,18 +508,23 @@ plots_list <- lapply(time_periods, function(period) {
     plot = F
   )
 
-
   p_val_text <- if(Moran_test$p.value < 0.001) "< 0.001" else round(Moran_test$p.value, 3)
-
-  # Rescale Moran's I to Z value so that we can compare it across years
-  MoransI_z_score <- as.numeric((Moran_test$statistic["observed"] - Moran_test$statistic["expected"]) / Moran_test$statistic["sd"])
 
   # bind together grid ids and DHARMa resids by grid
   res_df <- data.frame(
   grid_id = sort(unique(data_this_period$grid_id)),
   dharma_norm = scales::squish(qnorm(dharma_recalculated$scaledResiduals), c(-4, 4), only.finite = FALSE)
 )
-    
+  
+
+  p <- NULL
+  stats_row <- NULL
+  
+  # ---------------------------------------------
+  # OPTION A: Generate Plot (if in plot_time_periods)
+  # ---------------------------------------------
+
+    if ( list(period) %in% plot_time_periods){
 # Join back to the grid for plotting
 plot_grid <- grid %>%
   inner_join(res_df, by = "grid_id")
@@ -548,15 +556,30 @@ plot_grid <- grid %>%
       axis.text.x = element_text(angle = 0, hjust = 0.5, size = 8), 
       axis.text.y = element_text(angle = 90, hjust = 0.5, size = 8) 
     )
-  
-  
-    # store p-value for further use e.g. in traffic light table    
-attr(p, "MoransI_z_score") <- MoransI_z_score
-    attr(p, "period") <- period_label
-  return(p)
+  }
 
-})
-  
+  # ---------------------------------------------
+  # OPTION B: Generate Stats (if in years_for_stats)
+  # ---------------------------------------------
+
+  if (list(period) %in% years_for_stats) {
+  # store Moran's I p-value for further use e.g. in traffic light table 
+  # Rescale Moran's I to Z value so that we can compare it across years
+  MoransI_z_score  <- as.numeric((Moran_test$statistic["observed"] - Moran_test$statistic["expected"]) / Moran_test$statistic["sd"])
+
+  # calculate proportion of spatial residuals in the tails of the distribution
+  tail_prop <- mean(abs(res_df$dharma_norm) > 1.96)
+    
+    stats_row <- data.frame("period" = period_label,
+    'MoransI_z_score' = MoransI_z_score,
+    'tail_prop' = tail_prop
+    )
+  }
+ 
+  return(list(plot = p, stats_row = stats_row))
+}
+)
+  plots_list <- lapply(results_list, function(x) x$plot)
   plots_list <- Filter(Negate(is.null), plots_list)
 
   # ---- Combine plots ------
@@ -564,13 +587,11 @@ attr(p, "MoransI_z_score") <- MoransI_z_score
   combined_plot <- wrap_plots(plots_list, ncol = 2) + 
   plot_layout(guides = 'collect')  & 
   theme(legend.position = 'right')
-  
-  
+    
   # ---- Extract Metadata Table ------
- combined_plot@meta$MoransI_z_score <- data.frame(
-    period = sapply(plots_list, function(x) attr(x, "period")),
-    p_value = sapply(plots_list, function(x) attr(x, "MoransI_z_score"))
-  )
+ stats_df <- bind_rows(lapply(results_list, function(x) x$stats_row))
+  
+  combined_plot@meta$stats <- stats_df
 
   return (combined_plot)
 }
