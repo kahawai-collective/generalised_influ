@@ -590,8 +590,9 @@ plot_cdi <- function(preds_list, compare_preds_list = NULL) {
 #' @export
 #'
 cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
+  
+  # ------------------- Prepare the data ----------------------
   # comparison switch
-
   compareOn <- !is.null(compare_preds_list)
 
   if (compareOn) {
@@ -612,9 +613,13 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
   # exclude year from terms
   terms_labels <- setdiff(all_model_terms, year)
 
+  # ---------- Loop through terms to generate plots ------------
+
   result <- setNames(
     lapply(terms_labels, function(term_label) {
-      # Define col names for fitted terms and ses
+
+      # ---------- Organise data for this term ------------------
+      # Define col names for fitted terms and standard errors
       fit_colname <- sym(paste0('fit.', term_label))
       se_colname <- sym(paste0('se.fit.', term_label))
 
@@ -631,7 +636,14 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
       # each term. This allows for matching of terms like 'poly(log(var),3)' with 'var'
 
       term_stripped <- all.vars(as.formula(paste("~", term_label)))
+      if(length(term_stripped)==2) {
+        raw_values <- paste(preds[[ term_stripped[1] ]], 
+                   preds[[ term_stripped[2] ]], 
+                   sep = ":")
+
+      } else {
       raw_values <- preds[[term_stripped]]
+      }
 
       # Numeric terms are cut into factors
       if (
@@ -676,20 +688,47 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
         )
 
       # Reorder levels according to coefficients for factors
-      if (is.factor(raw_values) && !(grepl('month', term_label))) {
+      if (any(sapply(preds[term_stripped], is.factor)) && !(grepl('month', term_label))) {
         coeffs <- coeffs %>%
           arrange(coef)
 
         coeffs$term <- factor(coeffs$term, levels = coeffs$term, ordered = TRUE)
 
         levels <- factor(levels, levels = coeffs$term, ordered = TRUE)
-      }
+
+        # ---------- special case: interaction including month --------------
+        # Sort dataframe by 'other' then by month if there is a month interaction term
+      } else if (length(term_stripped) == 2 && grepl('month', term_label)) {
+        month_idx <- grep('month', term_stripped)
+        coeffs <- coeffs %>%
+          tidyr::separate(term, into = c("col1", "col2"), sep = ":", remove = FALSE) %>%
+          mutate(
+            # Assign the month and 'other' based on the original column order
+            month_str = if (month_idx == 1) col1 else col2,
+            other_str = if (month_idx == 1) col2 else col1,
+            # Assign levels to month factor
+            month_str = factor(month_str, levels = levels(preds$month), ordered = TRUE)            
+            ) %>%
+          arrange(other_str, month_str) %>%
+          select(-col1, -col2, -month_str, -other_str)
+        coeffs$term <- factor(coeffs$term, levels = unique(coeffs$term))
+        }
+      
+      # ------ Organise comparison data for this term if exist ------
 
       if (
         compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)
       ) {
         # Extract components from the comparison list
-        comp_raw_values <- compare_preds_df[[term_stripped]]
+
+        if(length(term_stripped)==2) {
+        comp_raw_values <- paste(compare_preds_df[[ term_stripped[1] ]], 
+                   compare_preds_df[[ term_stripped[2] ]], 
+                   sep = ":")
+          } else {
+          comp_raw_values <- compare_preds_df[[term_stripped]]
+          }
+                
         comp_preds <- compare_preds_list$preds
         comp_V <- compare_preds_list$V
         comp_X_centered <- compare_preds_list$X_centered
@@ -736,6 +775,8 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
             lower = coef - (1.96 * se),
             upper = coef + (1.96 * se)
           )
+        
+        # ------------- Populate Traffic Light dataframe ------------
 
         # Generate coeffsDiffer indicator
         coeffs_merged <- merge(
@@ -819,21 +860,21 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
 
       p1 <- ggplot(coeffs, aes(x = term, y = exp(coef))) +
         geom_point(shape = 2, size = 2, color = col1) +
-        geom_errorbar(aes(ymin = exp(lower), ymax = exp(upper)), width = 0) +
+        geom_errorbar(aes(ymin = exp(lower), ymax = exp(upper)), width = 0, color = col1) +
         # Bottom Cap
         geom_segment(aes(
           x = as.numeric(term) - 0.05,
           xend = as.numeric(term) + 0.05,
           y = exp(lower),
           yend = exp(lower)
-        )) +
+        ), color = col1) +
         # Top Cap
         geom_segment(aes(
           x = as.numeric(term) - 0.05,
           xend = as.numeric(term) + 0.05,
           y = exp(upper),
           yend = exp(upper)
-        )) +
+        ), color = col1) +
         geom_hline(yintercept = 1, linetype = "dashed") +
 
         # Conditional block to display coeffs for a model to be compared with (e.g. last year)
@@ -885,13 +926,19 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
       distrs <- preds %>%
         group_by(focus = .[[year]], term = levels) %>%
         summarise(count = n(), .groups = "drop_last") %>%
-
         mutate(
           total = sum(count),
           prop = count / total
         ) %>%
-
         ungroup()
+
+      # ---------- special case: interaction including month --------------
+
+      if (length(term_stripped) == 2 && grepl('month', term_label)) {
+        
+        distrs$term <- factor(distrs$term, levels = unique(coeffs$term))
+        
+        }
 
       if (
         compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)
@@ -929,7 +976,7 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
         scale_x_discrete(drop = FALSE, labels = x_labels) +
         theme_bw() +
         background_grid(major = "xy", minor = "none") +
-        labs(x = term_stripped, y = year) +
+        labs(x = paste(term_stripped, collapse = ":"), y = year) +
         dynamic_theme +
         common_theme
 
