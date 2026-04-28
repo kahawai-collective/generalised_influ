@@ -4,6 +4,7 @@
 #' using ggplot2.
 #'
 #' @param fit A fitted model object (of class glm, glm2, or survreg).
+#' @param compare_fit A fitted model object if model needs to be compared with a previous model
 #' @return A ggplot object.
 #' @import ggplot2
 #' @importFrom stats dunif model.frame model.response
@@ -12,7 +13,7 @@
 #' @export
 #'
 
-get_DHARMAres <- function(fit) {
+get_DHARMAres <- function(fit, compare_fit  = NULL) {
  
   # Extract original data
   raw_data <- fit$data
@@ -20,6 +21,8 @@ get_DHARMAres <- function(fit) {
   if (is.null(raw_data) && inherits(fit, "survreg")) {
     raw_data <- eval(fit$call$data)
   }
+
+  
 
   # Identify lat and lon columns in a dataset (could be start_latitude, mean_latitude, etc)
   if (!(("lat" %in% colnames(raw_data)) & ("lon" %in% colnames(raw_data)))) {
@@ -41,6 +44,27 @@ get_DHARMAres <- function(fit) {
     raw_data,
     select = union(all.vars(delete.response(terms(fit))), c('lat', 'lon'))
   )
+
+  # Identify new vessels and years in the data
+
+  if(!is.null(compare_fit)) {
+    compare_data <- compare_fit$data
+    if (is.null(compare_data) && inherits(compare_fit, "survreg")) {
+    compare_data <- eval(compare_fit$call$data)
+  }
+    # Identify which columns exist in both datasets
+    common_cols <- intersect(names(raw_data), names(compare_data))
+    
+    new_factor_levels <- sapply(common_cols, function(col) {
+
+      if(is.factor(raw_data[[col]])){
+      setdiff(unique(raw_data[[col]]), unique(compare_data[[col]]))
+      }
+    }, simplify = FALSE)
+    
+    new_factor_levels <- Filter(function(x) length(x) > 0, new_factor_levels)
+    }
+
 
   # Build dataframe to store diagnostics
   diag_metrics <- data.frame(
@@ -109,7 +133,8 @@ attr(diag_metrics, "predictors") <- all.vars(delete.response(terms(fit)))
     refit = DHARMa_obj$refit,
     integerResponse = DHARMa_obj$integerResponse,
     diag_metrics = diag_metrics ,
-    predictors = all.vars(delete.response(terms(fit)))
+    predictors = all.vars(delete.response(terms(fit))),
+    new_factor_levels = if (exists("new_factor_levels")) new_factor_levels else NULL
   )
 
   class(out) <- "DHARMa"

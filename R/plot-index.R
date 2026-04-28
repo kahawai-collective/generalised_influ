@@ -258,8 +258,7 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
 
 } else {series_stats <- NULL}
   
- #__________________________________________________________________________________________________________
-  # End of series stats code 
+ # ------ Plotting code -----------
   
   y_col_name <- if (normalise_ENSO)  "index.norm" else "index"
   myColors <- c( '#F5B915FF', 'dodgerblue', '#08235FFF', '#4D9221',  "purple4" ,  "violetred")
@@ -333,19 +332,18 @@ plot_sos <- function(cidx,
                      CPUE_set, 
                      ref_period=NULL, 
                      period_type='target', 
-                     ref_series = 1, 
+                     ref_series, 
                      # ref_index = 'Positive', 
                      landings_data = NULL, 
                      plot_exploitation = TRUE, 
                      cpue_smooth = FALSE, 
                      bmsy_proxy = 40){
   
-  
-  ref_name <- unique(cidx$Series)[ref_series]
+  # ref_name <- unique(cidx$Series)[ref_series]
   
   indices <- cidx %>% 
-    filter(is_stan, is_scaled, Series %in% CPUE_set, tolower(Index)==selected_idx) %>%
-    mutate(is_ref = (Series == ref_name))
+    filter(is_stan, is_scaled, Series %in% c(CPUE_set, ref_series), tolower(Index)==selected_idx) %>%
+    mutate(is_ref = (Series == ref_series))
   
   overlap <- indices %>%
     group_by(Series, Index) %>%
@@ -400,19 +398,26 @@ plot_sos <- function(cidx,
     
   }
   
+  # Set colours for plotting sreries: black for reference, grey for the rest.
+  series_colors <- setNames(
+  ifelse(indices$is_ref, "black", "grey80"), 
+  indices$Series
+  )
+
   # Add indices to the plot  
   g1 <- g1 +
     
     # Layer 1: Background (All non-reference series)
-    geom_line(data = filter(indices, !is_ref), color = "grey80") +
+    geom_line(data = filter(indices, !is_ref), aes(color = Series)) +
     geom_point()+
     
     # Layer 2: Foreground (The reference series only)
-    geom_line(data = filter(indices, is_ref), color = "black") +
-    geom_linerange(data = filter(indices, is_ref), aes(ymin = Lower, ymax = Upper), size = 0.5) +
+    geom_line(data = filter(indices, is_ref), aes(color = Series)) +
+    geom_linerange(data = filter(indices, is_ref), aes(ymin = Lower, ymax = Upper, color = Series), size = 0.5) +
     
-    scale_color_manual(values = c("TRUE" = "black", "FALSE" = "grey80"), guide = "none") +
+    scale_color_manual(name = "Series", values = series_colors) +
     scale_y_continuous('CPUE index', limits = c(0, NA)) +
+    scale_x_continuous( breaks=unique(indices$level),limits=range(unique(indices$level))) +
     theme_cowplot() +
     theme(panel.grid.major = element_line(colour = 'grey90')) +
     (if(plot_exploitation){
@@ -427,7 +432,10 @@ plot_sos <- function(cidx,
       )
     })
   
+  # no legend for linetype if there is only one type
   if (length(unique(indices$Index)) == 1) {g1 <- g1 +  scale_linetype(guide = 'none') }
+  # no legend for colour if we only plot reference series
+  if (length(unique(indices$Series)) == 1) { g1 <- g1 + guides(color = 'none') }
   
   if (cpue_smooth) {g1 <- g1 + geom_smooth(data = this_idx, aes(x=level, y=index))}
   
@@ -449,6 +457,7 @@ plot_sos <- function(cidx,
   
   g2 <- ggplot(landings,aes(level, landings))  +
     scale_y_continuous('Removals (t)', limits=c(0, NA)) +
+    scale_x_continuous( breaks=unique(landings$level),limits=range(unique(landings$level))) +
     geom_line()+
     geom_point()+
     xlab('') +
@@ -460,8 +469,8 @@ plot_sos <- function(cidx,
     
     
     g3 <- ggplot(data = landings %>% filter(is_ref), aes(x=level, y=erate))  +
-      # scale_x_continuous('Fishing year',breaks=unique(joint$level),limits=range(unique(joint$level))) +
-      scale_x_continuous('Fishing year')+
+      scale_x_continuous('Fishing year',breaks=unique(landings$level),limits=range(unique(landings$level))) +
+     # scale_x_continuous('Fishing year')+
       scale_y_continuous('Relative exploitation rate', limits = c(0,NA)) +
       geom_line()+
       geom_point()+
@@ -478,7 +487,7 @@ plot_sos <- function(cidx,
       plot_annotation(tag_levels = list(c("(a)", "(b)", "(c)"))) & 
       theme(panel.grid.major = element_line(colour = 'grey90'),
             plot.tag.position = c(0.06, 1.15),
-            plot.margin = margin(t = 20, r = 10, b = 10, l = 10))
+            plot.margin = margin(t = 20, r = 2, b = 2, l = 2))
     
     # two plots
   } else {
@@ -487,7 +496,7 @@ plot_sos <- function(cidx,
       plot_annotation(tag_levels = list(c("(a)", "(b)", "(c)"))) & 
       theme(panel.grid.major = element_line(colour = 'grey90'),
             plot.tag.position = c(0.06, 1.1),
-            plot.margin = margin(t = 20, r = 10, b = 10, l = 10))
+            plot.margin = margin(t = 20, r = 2, b = 2, l = 2))
   }
   
   
