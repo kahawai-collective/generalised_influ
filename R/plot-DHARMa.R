@@ -325,14 +325,7 @@ boxplot_DHARMares <- function(diag_metrics) {
         pred_vec <- factor(pred_vec)
       }
 
-      # Create plotting dataframe
-      plot_df <- data.frame(
-        residuals = qnorm(diag_metrics_df$scaledResiduals),
-        predictor = pred_vec
-      ) %>%
-        add_count(predictor, name = "n_obs")
-
-      # Conduct kolmagorov-smirnov test.  Test taken directly from DHARMa package
+       # Conduct kolmagorov-smirnov test.  Test taken directly from DHARMa package
       out = list()
 
       out$uniformity$details = suppressWarnings(by(
@@ -345,6 +338,7 @@ boxplot_DHARMares <- function(diag_metrics) {
       out$uniformity$p.value = rep(NA, nlevels(pred_vec))
       for (i in 1:nlevels(pred_vec)) {
         out$uniformity$p.value[i] = out$uniformity$details[[i]]$p.value
+        out$uniformity$KSstat[i] = out$uniformity$details[[i]]$statistic
       }
       out$uniformity$p.value.cor = p.adjust(out$uniformity$p.value)
       # Low p-vals will have red boxplots
@@ -353,6 +347,16 @@ boxplot_DHARMares <- function(diag_metrics) {
         "red",
         "grey30"
       )
+
+      # Create plotting dataframe
+      plot_df <- data.frame(
+        residuals = qnorm(diag_metrics_df$scaledResiduals),
+        predictor = pred_vec
+      ) %>%
+        add_count(predictor, name = "n_obs") %>%
+        mutate(
+          is_new = as.character(predictor) %in% as.character(diag_metrics$new_factor_levels[[term_label]])
+        )
 
       # ----- Plotting theme -----
       if ((length(levels(pred_vec)) > 12)) {
@@ -378,18 +382,37 @@ boxplot_DHARMares <- function(diag_metrics) {
       }
 
       # ----- Plot code -----
-      ggplot(
+     p <-  ggplot(
         plot_df,
         aes(x = predictor, y = residuals, fill = predictor, alpha = n_obs)
       ) +
-        geom_boxplot() +
+        geom_boxplot(outlier.shape = NA) +
         geom_hline(yintercept = c(-1.96, 0, 1.96), linetype = "dashed") +
         scale_fill_manual(values = box_colors) +
-        guides(fill = "none", alpha = "none") +
+        guides(fill = "none", alpha = "none", linetype = 'none', linewidth = 'none') +
         labs(x = term_label, y = "DHARMa Residuals") +
         scale_x_discrete(drop = FALSE, labels = x_labels) +
         theme_bw() +
         dynamic_theme
+
+      if (term_label %in% names(diag_metrics$new_factor_levels)) {
+      p <- p + 
+        aes(linewidth = is_new, linetype = is_new) +
+        scale_linewidth_manual(values = c("TRUE" = 1.5, "FALSE" = 0.5)) +
+        scale_linetype_manual(values = c("TRUE" = "solid", "FALSE" = "dotdash"))
+        
+        # Calculate traffic light indicator:
+        is_new       <- levels(pred_vec) %in% as.character(diag_metrics$new_factor_levels[[term_label]])
+        meanKS_new   <- mean(out$uniformity$KSstat[is_new])
+        meanKS_old   <- mean(out$uniformity$KSstat[!is_new])
+        pct_increase <- (meanKS_new - meanKS_old) / meanKS_old 
+        p@meta$indicatorKS  <- case_when(
+          pct_increase <= 0.01 ~ '✔',
+          pct_increase > 0.1 ~ '!',
+          pct_increase <= 0.2 ~ '?'
+        )
+      }
+      return(p)
     }),
     term_labels
   )
