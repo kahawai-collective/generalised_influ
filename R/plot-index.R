@@ -390,6 +390,10 @@ plot_sos <- function(cidx,
     
     # Calculate base value
     b <- gmean(ref_vals) * ref_mult
+    # Calculate stock status indicator:
+   below_target <- any( filter(indices, is_ref)  %>%
+  slice_max(order_by = level, n = 3) %>%
+  pull(index) < b)
     
     # Add B10, B20, B40 and reference period to the plot
     g1 <- g1 + geom_hline(yintercept = b * c(1, 20/bmsy_proxy, 10/bmsy_proxy), 
@@ -499,6 +503,7 @@ plot_sos <- function(cidx,
             plot.margin = margin(t = 20, r = 2, b = 2, l = 2))
   }
   
-  
+  plot_combined@meta$below_target <- below_target
+
   return(plot_combined)
 }
