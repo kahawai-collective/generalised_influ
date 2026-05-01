@@ -503,7 +503,9 @@ plot_sos <- function(cidx,
             plot.margin = margin(t = 20, r = 2, b = 2, l = 2))
   }
   
+  if(!is.null(ref_period)){
   plot_combined@meta$below_target <- below_target
+  }
 
   return(plot_combined)
-}
+  }
