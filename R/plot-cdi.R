@@ -590,7 +590,6 @@ plot_cdi <- function(preds_list, compare_preds_list = NULL) {
 #' @export
 #'
 cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
-  
   # ------------------- Prepare the data ----------------------
   # comparison switch
   compareOn <- !is.null(compare_preds_list)
@@ -617,8 +616,7 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
 
   result <- setNames(
     lapply(terms_labels, function(term_label) {
-
-      # ---------- Organise data for this term ------------------
+      # ---------- Housekeeping  ------------------
       # Define col names for fitted terms and standard errors
       fit_colname <- sym(paste0('fit.', term_label))
       se_colname <- sym(paste0('se.fit.', term_label))
@@ -635,42 +633,124 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
       # This is done by search for each column name in the data as a whole word in the
       # each term. This allows for matching of terms like 'poly(log(var),3)' with 'var'
 
+      # ------------------------ Assess term type -------------------------------
+
       term_stripped <- all.vars(as.formula(paste("~", term_label)))
-      if(length(term_stripped)==2) {
-        raw_values <- paste(preds[[ term_stripped[1] ]], 
-                   preds[[ term_stripped[2] ]], 
-                   sep = ":")
+      is_interaction <- length(term_stripped) == 2
+      is_numeric_interaction <- is_interaction && # at least one term is numeric
+        !all(sapply(preds[term_stripped], is.factor))
 
-      } else {
-      raw_values <- preds[[term_stripped]]
-      }
+      # ---------- Organise data for this term (bin and sort) ------------------
 
-      # Numeric terms are cut into factors
-      if (
-        is.numeric(raw_values) &&
-          (!all(raw_values %% 1 == 0) | length(unique(raw_values)) > 10)
-      ) {
-        breaks <- pretty(raw_values, 30)
-        step <- breaks[2] - breaks[1]
-        breaks <- breaks[breaks <= max(raw_values)]
+      if (is_numeric_interaction) {
+        # ~~CASE 1. Interaction Case when at least one interaction term is numeric
+        first_numeric_term <- Find(
+          function(x) !is.factor(preds[[x]]),
+          term_stripped
+        )
+        second_term <- Find(function(x) x != first_numeric_term, term_stripped)
+        preds$raw_values_1 <- preds[[first_numeric_term]]
+        preds$raw_values_2 <- preds[[second_term]]
 
-        if (max(breaks) < max(raw_values)) {
-          breaks <- c(breaks, max(breaks) + step)
-        }
-        labels <- breaks[-length(breaks)] + (step / 2)
-        levels <- cut(
-          raw_values,
-          breaks = breaks,
-          labels = labels,
+        # A) Slice first numeric term into Quantiles (Q1, Median/IQR, Q3) to act as groups
+        quant_breaks <- quantile(
+          preds$raw_values_1,
+          probs = c(0, 0.25, 0.75, 1),
+          na.rm = TRUE
+        )
+
+        preds$levels_1 <- cut(
+          preds$raw_values_1,
+          breaks = quant_breaks,
           include.lowest = TRUE
         )
+        # Replace default labels with medians
+        bin_medians <- tapply(preds$raw_values_1, preds$levels_1, median)
+        levels(preds$levels_1) <- bin_medians
+
+        # B) Handle second term normally
+        # Numeric terms are cut into factors
+        if (
+          is.numeric(preds$raw_values_2) &&
+            (!all(preds$raw_values_2 %% 1 == 0) |
+              length(unique(preds$raw_values_2)) > 10)
+        ) {
+          breaks <- pretty(preds$raw_values_2, 15)
+          step <- breaks[2] - breaks[1]
+          breaks <- breaks[breaks <= max(preds$raw_values_2)]
+
+          if (max(breaks) < max(preds$raw_values_2)) {
+            breaks <- c(breaks, max(breaks) + step)
+          }
+          labels <- breaks[-length(breaks)] + (step / 2)
+          preds$levels_2 <- cut(
+            preds$raw_values_2,
+            breaks = breaks,
+            labels = labels,
+            include.lowest = TRUE
+          )
+        } else {
+          preds$levels_2 <- factor(preds$raw_values_2)
+        }
+
+        # Paste levels of both predicoturs for using in the plots
+        # reorder preds dataframe by first numeric term, then second term
+        preds <- preds %>%
+          arrange(levels_1, levels_2) %>%
+          mutate(
+            levels = paste(levels_1, levels_2, sep = ":"),
+            levels = factor(levels, levels = unique(levels))
+          )
       } else {
-        levels <- factor(raw_values)
+        if (is_interaction) {
+          # ~~CASE 2. Interaction Case when both interaction terms are factors
+          preds$raw_values <- paste(
+            preds[[term_stripped[1]]],
+            preds[[term_stripped[2]]],
+            sep = ":"
+          )
+
+          if (grepl('month', term_label)) {
+            # reorder preds dataframe by month
+            other_term <- term_stripped[!grepl('month', term_stripped)]
+            preds <- arrange(preds, !!sym(other_term), month) %>%
+              mutate(levels = factor(raw_values, levels = unique(raw_values)))
+
+          }
+        } else {
+          # ~~CASE 3. Not an interaction case
+          preds$raw_values <- preds[[term_stripped]]
+          preds$levels <- factor(preds$raw_values)
+        }
+        # Numeric terms are cut into factors
+        if (
+          is.numeric(preds$raw_values) &&
+            (!all(preds$raw_values %% 1 == 0) |
+              length(unique(preds$raw_values)) > 10)
+        ) {
+          breaks <- pretty(preds$raw_values, 30)
+          step <- breaks[2] - breaks[1]
+          breaks <- breaks[breaks <= max(preds$raw_values)]
+
+          if (max(breaks) < max(preds$raw_values)) {
+            breaks <- c(breaks, max(breaks) + step)
+          }
+          labels <- breaks[-length(breaks)] + (step / 2)
+          preds$levels <- cut(
+            preds$raw_values,
+            breaks = breaks,
+            labels = labels,
+            include.lowest = TRUE
+          )
+          
+        } 
       }
+
+      # ------------ Build coefficient (effects) dataframe ---------------------
 
       coeffs <- preds %>%
         mutate(row_id = row_number()) %>%
-        group_by(term = !!levels) %>%
+        group_by(term = levels) %>%
         summarise(
           coef = mean(!!fit_colname),
           count = n(),
@@ -688,68 +768,97 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
         )
 
       # Reorder levels according to coefficients for factors
-      if (any(sapply(preds[term_stripped], is.factor)) && !(grepl('month', term_label))) {
+      if (
+        !is_interaction &&
+        any(sapply(preds[term_stripped], is.factor)) &&
+          !(grepl('month', term_label))
+      ) {
         coeffs <- coeffs %>%
-          arrange(coef)
+          arrange(coef) %>%
+          mutate(term = factor(term, levels = term, ordered = TRUE))
 
-        coeffs$term <- factor(coeffs$term, levels = coeffs$term, ordered = TRUE)
+        preds$levels <- factor(preds$levels, levels = coeffs$term, ordered = TRUE)
+      }
 
-        levels <- factor(levels, levels = coeffs$term, ordered = TRUE)
-
-        # ---------- special case: interaction including month --------------
-        # Sort dataframe by 'other' then by month if there is a month interaction term
-      } else if (length(term_stripped) == 2 && grepl('month', term_label)) {
-        month_idx <- grep('month', term_stripped)
-        coeffs <- coeffs %>%
-          tidyr::separate(term, into = c("col1", "col2"), sep = ":", remove = FALSE) %>%
-          mutate(
-            # Assign the month and 'other' based on the original column order
-            month_str = if (month_idx == 1) col1 else col2,
-            other_str = if (month_idx == 1) col2 else col1,
-            # Assign levels to month factor
-            month_str = factor(month_str, levels = levels(preds$month), ordered = TRUE)            
-            ) %>%
-          arrange(other_str, month_str) %>%
-          select(-col1, -col2, -month_str, -other_str)
-        coeffs$term <- factor(coeffs$term, levels = unique(coeffs$term))
-        }
-      
-      # ------ Organise comparison data for this term if exist ------
+     # ------ Organise comparison data for this term if exist ------
 
       if (
         compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)
       ) {
         # Extract components from the comparison list
 
-        if(length(term_stripped)==2) {
-        comp_raw_values <- paste(compare_preds_df[[ term_stripped[1] ]], 
-                   compare_preds_df[[ term_stripped[2] ]], 
-                   sep = ":")
+        if (is_numeric_interaction) {
+          compare_preds_df$raw_values_1 <- compare_preds_df[[
+            first_numeric_term
+          ]]
+          compare_preds_df$raw_values_2 <- compare_preds_df[[second_term]]
+          # A) Slice first numeric term into Quantiles (Q1, Median/IQR, Q3) to act as groups.
+          # # Important: ise the same qualtile breaks as the first model
+
+          compare_preds_df$levels_1 <- cut(
+            compare_preds_df$raw_values_1,
+            breaks = quant_breaks,
+            labels = bin_medians,
+            include.lowest = TRUE
+          )
+
+          # B) Handle second term normally
+
+          # Numeric terms are cut into factors
+          if (
+            is.numeric(compare_preds_df$raw_values_2) &&
+              (!all(compare_preds_df$raw_values_2 %% 1 == 0) |
+                length(unique(compare_preds_df$raw_values_2)) > 10)
+          ) {
+            compare_preds_df$levels_2 <- cut(
+              compare_preds_df$raw_values_2,
+              breaks = breaks,
+              labels = labels,
+              include.lowest = TRUE
+            )
           } else {
-          comp_raw_values <- compare_preds_df[[term_stripped]]
+            compare_preds_df$levels_2 <- factor(compare_preds_df$raw_values_2)
           }
-                
-        comp_preds <- compare_preds_list$preds
+
+          # Paste levels of both predicoturs for using in the plots
+          compare_preds_df$levels <- factor(paste(
+            compare_preds_df$levels_1,
+            compare_preds_df$levels_2,
+            sep = ":"
+          ))
+        } else {
+          if (is_interaction) {
+            # Interaction Case when both interaction terms are factors
+            compare_preds_df$raw_values <- paste(
+              compare_preds_df[[term_stripped[1]]],
+              compare_preds_df[[term_stripped[2]]],
+              sep = ":"
+            )
+          } else {
+            # Not an interaction case
+            compare_preds_df$raw_values <- compare_preds_df[[term_stripped]]
+          }
+          # Numeric terms are cut into factors
+          if (
+            is.numeric(compare_preds_df$raw_values) &&
+              (!all(compare_preds_df$raw_values %% 1 == 0) |
+                length(unique(compare_preds_df$raw_values)) > 10)
+          ) {
+            compare_preds_df$levels <- cut(
+              compare_preds_df$raw_values,
+              breaks = breaks,
+              labels = labels,
+              include.lowest = TRUE
+            )
+          } else {
+            compare_preds_df$levels <- factor(compare_preds_df$raw_values)
+          }
+        }
+
         comp_V <- compare_preds_list$V
         comp_X_centered <- compare_preds_list$X_centered
         comp_assign <- compare_preds_list$assign
         comp_terms <- compare_preds_list$terms
-
-        # Numeric terms are cut into factors
-        if (
-          is.numeric(comp_raw_values) &&
-            (!all(comp_raw_values %% 1 == 0) |
-              length(unique(comp_raw_values)) > 10)
-        ) {
-          comp_levels <- cut(
-            comp_raw_values,
-            breaks = breaks,
-            labels = labels,
-            include.lowest = TRUE
-          )
-        } else {
-          comp_levels <- factor(comp_raw_values)
-        }
 
         # Identify columns in the comparison model matrix
         comp_match_idx <- which(comp_terms == term_label)
@@ -760,7 +869,7 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
 
         comp_coeffs <- compare_preds_df %>%
           mutate(row_id = row_number()) %>%
-          group_by(term = !!comp_levels) %>%
+          group_by(term = levels) %>%
           summarise(
             coef = mean(!!fit_colname),
             count = n(),
@@ -775,7 +884,7 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
             lower = coef - (1.96 * se),
             upper = coef + (1.96 * se)
           )
-        
+
         # ------------- Populate Traffic Light dataframe ------------
 
         # Generate coeffsDiffer indicator
@@ -786,7 +895,7 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
           suffixes = c("_new", "_old")
         )
 
-        if (is.factor(raw_values)) {
+        if (any(sapply(preds[term_stripped], is.factor))) {
           coeffsDiffer <- with(
             coeffs_merged,
             abs((exp(coef_new) - exp(coef_old)) / exp(coef_old) * 100)
@@ -822,7 +931,7 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
 
       # Create plot theme depending on the term:
 
-      if ((length(levels(levels)) > 12)) {
+      if ((length(levels(preds$levels)) > 12)) {
         # Vertical labels and tighter margins
         dynamic_theme <- theme(
           axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
@@ -860,21 +969,31 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
 
       p1 <- ggplot(coeffs, aes(x = term, y = exp(coef))) +
         geom_point(shape = 2, size = 2, color = col1) +
-        geom_errorbar(aes(ymin = exp(lower), ymax = exp(upper)), width = 0, color = col1) +
+        geom_errorbar(
+          aes(ymin = exp(lower), ymax = exp(upper)),
+          width = 0,
+          color = col1
+        ) +
         # Bottom Cap
-        geom_segment(aes(
-          x = as.numeric(term) - 0.05,
-          xend = as.numeric(term) + 0.05,
-          y = exp(lower),
-          yend = exp(lower)
-        ), color = col1) +
+        geom_segment(
+          aes(
+            x = as.numeric(term) - 0.05,
+            xend = as.numeric(term) + 0.05,
+            y = exp(lower),
+            yend = exp(lower)
+          ),
+          color = col1
+        ) +
         # Top Cap
-        geom_segment(aes(
-          x = as.numeric(term) - 0.05,
-          xend = as.numeric(term) + 0.05,
-          y = exp(upper),
-          yend = exp(upper)
-        ), color = col1) +
+        geom_segment(
+          aes(
+            x = as.numeric(term) - 0.05,
+            xend = as.numeric(term) + 0.05,
+            y = exp(upper),
+            yend = exp(upper)
+          ),
+          color = col1
+        ) +
         geom_hline(yintercept = 1, linetype = "dashed") +
 
         # Conditional block to display coeffs for a model to be compared with (e.g. last year)
@@ -935,16 +1054,14 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
       # ---------- special case: interaction including month --------------
 
       if (length(term_stripped) == 2 && grepl('month', term_label)) {
-        
         distrs$term <- factor(distrs$term, levels = unique(coeffs$term))
-        
-        }
+      }
 
       if (
         compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)
       ) {
-        comp_distrs <- comp_preds %>%
-          group_by(focus = .[[year]], term = comp_levels) %>%
+        comp_distrs <- compare_preds_df %>%
+          group_by(focus = .[[year]], term = levels) %>%
           summarise(count = n(), .groups = "drop_last") %>%
 
           mutate(
@@ -1254,7 +1371,7 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
 
 
 # Draft:
-#   cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
+# cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
 #   # ------------------- Prepare the data ----------------------
 #   # comparison switch
 #   compareOn <- !is.null(compare_preds_list)
@@ -1298,126 +1415,124 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
 #       # This is done by search for each column name in the data as a whole word in the
 #       # each term. This allows for matching of terms like 'poly(log(var),3)' with 'var'
 
-#       # ---------- Assess term type ----------------------------
+#       # ------------------------ Assess term type -------------------------------
 
 #       term_stripped <- all.vars(as.formula(paste("~", term_label)))
 #       is_interaction <- length(term_stripped) == 2
-#       is_numeric_interaction <- is_interaction &&
+#       is_numeric_interaction <- is_interaction && # at least one term is numeric
 #         !all(sapply(preds[term_stripped], is.factor))
 
-#       # ---------- Organise data for this term ------------------
-
-#       # Helper function to bin numeric vectors
-#       bin_numeric <- function(x, n_breaks) {
-#         if (is.numeric(x) && (!all(x %% 1 == 0) | length(unique(x)) > 10)) {
-#           breaks <- pretty(x, n_breaks)
-#           step <- breaks[2] - breaks[1]
-#           breaks <- breaks[breaks <= max(x)]
-#           if (max(breaks) < max(x)) {
-#             breaks <- c(breaks, max(breaks) + step)
-#           }
-#           labels <- breaks[-length(breaks)] + (step / 2)
-#           return(cut(
-#             x,
-#             breaks = breaks,
-#             labels = labels,
-#             include.lowest = TRUE
-#           ))
-#         }
-#         return(factor(x))
-#       }
+#       # ---------- Organise data for this term (bin and sort) ------------------
 
 #       if (is_numeric_interaction) {
-#         # Interaction Case when at least one interaction term is numeric
+#         # ~~CASE 1. Interaction Case when at least one interaction term is numeric
 #         first_numeric_term <- Find(
 #           function(x) !is.factor(preds[[x]]),
 #           term_stripped
 #         )
 #         second_term <- Find(function(x) x != first_numeric_term, term_stripped)
-#         raw_values_1 <- preds[[first_numeric_term]]
-#         raw_values_2 <- preds[[second_term]]
+#         preds$raw_values_1 <- preds[[first_numeric_term]]
+#         preds$raw_values_2 <- preds[[second_term]]
 
 #         # A) Slice first numeric term into Quantiles (Q1, Median/IQR, Q3) to act as groups
 #         quant_breaks <- quantile(
-#           raw_values_1,
+#           preds$raw_values_1,
 #           probs = c(0, 0.25, 0.75, 1),
 #           na.rm = TRUE
 #         )
 
-#         levels_1 <- cut(
-#           raw_values_1,
+#         preds$levels_1 <- cut(
+#           preds$raw_values_1,
 #           breaks = quant_breaks,
 #           include.lowest = TRUE
 #         )
 #         # Replace default labels with medians
-#         bin_medians <- tapply(raw_values_1, levels_1, median)
-#         levels(levels_1) <- bin_medians
+#         bin_medians <- tapply(preds$raw_values_1, preds$levels_1, median)
+#         levels(preds$levels_1) <- bin_medians
 
 #         # B) Handle second term normally
 #         # Numeric terms are cut into factors
-#       if (
-#         is.numeric(raw_values_2) &&
-#           (!all(raw_values_2 %% 1 == 0) | length(unique(raw_values_2)) > 10)
-#       ) {
-#         breaks <- pretty(raw_values_2, 15)
-#         step <- breaks[2] - breaks[1]
-#         breaks <- breaks[breaks <= max(raw_values_2)]
+#         if (
+#           is.numeric(preds$raw_values_2) &&
+#             (!all(preds$raw_values_2 %% 1 == 0) |
+#               length(unique(preds$raw_values_2)) > 10)
+#         ) {
+#           breaks <- pretty(preds$raw_values_2, 15)
+#           step <- breaks[2] - breaks[1]
+#           breaks <- breaks[breaks <= max(preds$raw_values_2)]
 
-#         if (max(breaks) < max(raw_values_2)) {
-#           breaks <- c(breaks, max(breaks) + step)
+#           if (max(breaks) < max(preds$raw_values_2)) {
+#             breaks <- c(breaks, max(breaks) + step)
+#           }
+#           labels <- breaks[-length(breaks)] + (step / 2)
+#           preds$levels_2 <- cut(
+#             preds$raw_values_2,
+#             breaks = breaks,
+#             labels = labels,
+#             include.lowest = TRUE
+#           )
+#         } else {
+#           preds$levels_2 <- factor(preds$raw_values_2)
 #         }
-#         labels <- breaks[-length(breaks)] + (step / 2)
-#         levels_2 <- cut(
-#           raw_values_2,
-#           breaks = breaks,
-#           labels = labels,
-#           include.lowest = TRUE
-#         )
-#       } else {
-#         levels_2 <- factor(raw_values_2)
-#       }
-        
+
 #         # Paste levels of both predicoturs for using in the plots
-#         levels <- factor(paste(levels_1, levels_2, sep = ":"))
+#         # reorder preds dataframe by first numeric term, then second term
+#         preds <- preds %>%
+#           arrange(levels_1, levels_2) %>%
+#           mutate(
+#             levels = paste(levels_1, levels_2, sep = ":"),
+#             levels = factor(levels, levels = unique(levels))
+#           )
 #       } else {
 #         if (is_interaction) {
-#           # Interaction Case when both interaction terms are factors
-#           raw_values <- paste(
+#           # ~~CASE 2. Interaction Case when both interaction terms are factors
+#           preds$raw_values <- paste(
 #             preds[[term_stripped[1]]],
 #             preds[[term_stripped[2]]],
 #             sep = ":"
 #           )
+
+#           if (grepl('month', term_label)) {
+#             # reorder preds dataframe by month
+#             other_term <- term_stripped[!grepl('month', term_stripped)]
+#             preds <- arrange(preds, !!sym(other_term), month) %>%
+#               mutate(levels = factor(raw_values, levels = unique(raw_values)))
+
+#           }
 #         } else {
-#           # Not an interaction case
-#           raw_values <- preds[[term_stripped]]
+#           # ~~CASE 3. Not an interaction case
+#           preds$raw_values <- preds[[term_stripped]]
+#           preds$levels <- factor(preds$raw_values)
 #         }
 #         # Numeric terms are cut into factors
-#       if (
-#         is.numeric(raw_values) &&
-#           (!all(raw_values %% 1 == 0) | length(unique(raw_values)) > 10)
-#       ) {
-#         breaks <- pretty(raw_values, 30)
-#         step <- breaks[2] - breaks[1]
-#         breaks <- breaks[breaks <= max(raw_values)]
+#         if (
+#           is.numeric(preds$raw_values) &&
+#             (!all(preds$raw_values %% 1 == 0) |
+#               length(unique(preds$raw_values)) > 10)
+#         ) {
+#           breaks <- pretty(preds$raw_values, 30)
+#           step <- breaks[2] - breaks[1]
+#           breaks <- breaks[breaks <= max(preds$raw_values)]
 
-#         if (max(breaks) < max(raw_values)) {
-#           breaks <- c(breaks, max(breaks) + step)
-#         }
-#         labels <- breaks[-length(breaks)] + (step / 2)
-#         levels <- cut(
-#           raw_values,
-#           breaks = breaks,
-#           labels = labels,
-#           include.lowest = TRUE
-#         )
-#       } else {
-#         levels <- factor(raw_values)
+#           if (max(breaks) < max(preds$raw_values)) {
+#             breaks <- c(breaks, max(breaks) + step)
+#           }
+#           labels <- breaks[-length(breaks)] + (step / 2)
+#           preds$levels <- cut(
+#             preds$raw_values,
+#             breaks = breaks,
+#             labels = labels,
+#             include.lowest = TRUE
+#           )
+          
+#         } 
 #       }
-#       }
+
+#       # ------------ Build coefficient (effects) dataframe ---------------------
 
 #       coeffs <- preds %>%
 #         mutate(row_id = row_number()) %>%
-#         group_by(term = !!levels) %>%
+#         group_by(term = levels) %>%
 #         summarise(
 #           coef = mean(!!fit_colname),
 #           count = n(),
@@ -1434,77 +1549,90 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
 #           upper = coef + (1.96 * se)
 #         )
 
-#       # ----- Reorder levels according to coefficients ------------
-#       if (sum(sapply(preds[term_stripped], is.factor)) == length(term_stripped) && !(grepl('month', term_label))
+#       # Reorder levels according to coefficients for factors
+#       if (
+#         !is_interaction &&
+#         any(sapply(preds[term_stripped], is.factor)) &&
+#           !(grepl('month', term_label))
 #       ) {
+#         coeffs <- coeffs %>%
+#           arrange(coef) %>%
+#           mutate(term = factor(term, levels = term, ordered = TRUE))
 
-#        # --- A). Factor, or factor:factor, excluding 'month' ---
-#         # Sorts by the effect size 
-#         coeffs <- coeffs %>%
-#           arrange(coef)
-                
-#       } else if (is_interaction && grepl('month', term_label)) {
-#         # --- B). interaction including month ---
-#         # Sort dataframe by 'other' then by month if there is a month interaction term
-#         month_idx <- grep('month', term_stripped)
-#         coeffs <- coeffs %>%
-#           tidyr::separate(
-#             term,
-#             into = c("col1", "col2"),
-#             sep = ":",
-#             remove = FALSE
-#           ) %>%
-#           mutate(
-#             # Assign the month and 'other' based on the original column order
-#             month_str = if (month_idx == 1) col1 else col2,
-#             other_str = if (month_idx == 1) col2 else col1,
-#             # Assign levels to month factor
-#             month_str = factor(
-#               month_str,
-#               levels = levels(preds$month),
-#               ordered = TRUE
-#             )
-#           ) %>%
-#           arrange(other_str, month_str) %>%
-#           select(-col1, -col2, -month_str, -other_str)
-        
-#       } else if (is_numeric_interaction) {
-#         # --- C). numeric:numeric interaction ---
-#         coeffs <- coeffs %>%
-#           tidyr::separate(term, into = c("num1", "num2"), sep = ":", remove = FALSE) %>%
-#           mutate(
-#             num1 = suppressWarnings(as.numeric(num1)),
-#             num2 = suppressWarnings(as.numeric(num2))
-#           ) %>%
-#           arrange(num1, num2) %>%
-#           select(-num1, -num2)
-          
-        
-#       } else if (is_interaction ) {
-#         # --- D). factor:numeric interaction ---
-#         # Find which position holds the factor and which holds the numeric
-#         factor_idx <- which(sapply(preds[term_stripped], is.factor))
-#         num_idx <- which(!sapply(preds[term_stripped], is.factor))
-
-#         coeffs <- coeffs %>%
-#           tidyr::separate(term, into = c("val1", "val2"), sep = ":", remove = FALSE) %>%
-#           mutate(
-#             fact_str = if (factor_idx == 1) val1 else val2,
-#             num_str  = if (num_idx == 1) val1 else val2,
-            
-#             # Apply original factor levels so it sorts correctly
-#             fact_str = factor(fact_str, levels = levels(preds[[ term_stripped[factor_idx] ]])),
-#             num_str  = suppressWarnings(as.numeric(num_str))
-#           ) %>%
-#           # Arrange by numeric values, then by factor
-#           arrange(num_val, fact_str) %>%
-#           select(-val1, -val2, -fact_str, -num_str)
-          
-        
+#         preds$levels <- factor(preds$levels, levels = coeffs$term, ordered = TRUE)
 #       }
-#       coeffs$term <- factor(coeffs$term, levels = unique(coeffs$term), ordered = TRUE)
-#       levels <- factor(levels, levels = coeffs$term, ordered = TRUE)
 
+#       # # ----- Reorder levels according to coefficients ------------
+#       # if (sum(sapply(preds[term_stripped], is.factor)) == length(term_stripped) && !(grepl('month', term_label))
+#       # ) {
+
+#       #  # --- A). Factor, or factor:factor, excluding 'month' ---
+#       #   # Sorts by the effect size
+#       #   coeffs <- coeffs %>%
+#       #     arrange(coef)
+
+#       # } else if (is_interaction && grepl('month', term_label)) {
+#       #   # --- B). interaction including month ---
+#       #   # Sort dataframe by 'other' then by month if there is a month interaction term
+#       #   month_idx <- grep('month', term_stripped)
+#       #   coeffs <- coeffs %>%
+#       #     tidyr::separate(
+#       #       term,
+#       #       into = c("col1", "col2"),
+#       #       sep = ":",
+#       #       remove = FALSE
+#       #     ) %>%
+#       #     mutate(
+#       #       # Assign the month and 'other' based on the original column order
+#       #       month_str = if (month_idx == 1) col1 else col2,
+#       #       other_str = if (month_idx == 1) col2 else col1,
+#       #       # Assign levels to month factor
+#       #       month_str = factor(
+#       #         month_str,
+#       #         levels = levels(preds$month),
+#       #         ordered = TRUE
+#       #       )
+#       #     ) %>%
+#       #     arrange(other_str, month_str) %>%
+#       #     select(-col1, -col2, -month_str, -other_str)
+
+#       # } else if (is_numeric_interaction) {
+#       #   # --- C). numeric:numeric interaction ---
+#       #   coeffs <- coeffs %>%
+#       #     tidyr::separate(term, into = c("num1", "num2"), sep = ":", remove = FALSE) %>%
+#       #     mutate(
+#       #       num1 = suppressWarnings(as.numeric(num1)),
+#       #       num2 = suppressWarnings(as.numeric(num2))
+#       #     ) %>%
+#       #     arrange(num1, num2) %>%
+#       #     select(-num1, -num2)
+
+#       # } else if (is_interaction ) {
+#       #   # --- D). factor:numeric interaction ---
+#       #   # Find which position holds the factor and which holds the numeric
+#       #   factor_idx <- which(sapply(preds[term_stripped], is.factor))
+#       #   num_idx <- which(!sapply(preds[term_stripped], is.factor))
+
+#       #   coeffs <- coeffs %>%
+#       #     tidyr::separate(term, into = c("val1", "val2"), sep = ":", remove = FALSE) %>%
+#       #     mutate(
+#       #       fact_str = if (factor_idx == 1) val1 else val2,
+#       #       num_str  = if (num_idx == 1) val1 else val2,
+
+#       #       # Apply original factor levels so it sorts correctly
+#       #       fact_str = factor(fact_str, levels = levels(preds[[ term_stripped[factor_idx] ]])),
+#       #       num_str  = suppressWarnings(as.numeric(num_str))
+#       #     ) %>%
+#       #     # Arrange by numeric values, then by factor
+#       #     arrange(num_val, fact_str) %>%
+#       #     select(-val1, -val2, -fact_str, -num_str)
+
+#       # }
+
+#       # # reassign levels unless its one numeric predictor
+#       # if(!is_numeric(coeffs$term) )
+#       # coeffs$term <- factor(coeffs$term, levels = unique(coeffs$term), ordered = TRUE)
+#       # levels <- factor(levels, levels = levels(coeffs$term), ordered = TRUE)
 
 #       # ------ Organise comparison data for this term if exist ------
 
@@ -1514,69 +1642,73 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
 #         # Extract components from the comparison list
 
 #         if (is_numeric_interaction) {
-#            raw_values_1 <- compare_preds_df[[first_numeric_term]]
-#         raw_values_2 <- compare_preds_df[[second_term]]
+#           compare_preds_df$raw_values_1 <- compare_preds_df[[
+#             first_numeric_term
+#           ]]
+#           compare_preds_df$raw_values_2 <- compare_preds_df[[second_term]]
 #           # A) Slice first numeric term into Quantiles (Q1, Median/IQR, Q3) to act as groups.
 #           # # Important: ise the same qualtile breaks as the first model
 
-#         levels_1 <- cut(
-#           raw_values_1,
-#           breaks = quant_breaks,
-#           labels = bin_medians,
-#           include.lowest = TRUE
-#         )
-        
-#         # B) Handle second term normally
-
-#         # Numeric terms are cut into factors
-#         if (
-#           is.numeric(raw_values_2) &&
-#             (!all(raw_values_2 %% 1 == 0) |
-#               length(unique(raw_values_2)) > 10)
-#         ) {
-#           levels_2 <- cut(
-#             raw_values_2,
-#             breaks = breaks,
-#             labels = labels,
+#           compare_preds_df$levels_1 <- cut(
+#             compare_preds_df$raw_values_1,
+#             breaks = quant_breaks,
+#             labels = bin_medians,
 #             include.lowest = TRUE
 #           )
-#         } else {
-#           levels_2 <- factor(raw_values_2)
-#         }
 
-#         # Paste levels of both predicoturs for using in the plots
-#         comp_levels <- factor(paste(levels_1, levels_2, sep = ":"))
+#           # B) Handle second term normally
+
+#           # Numeric terms are cut into factors
+#           if (
+#             is.numeric(compare_preds_df$raw_values_2) &&
+#               (!all(compare_preds_df$raw_values_2 %% 1 == 0) |
+#                 length(unique(compare_preds_df$raw_values_2)) > 10)
+#           ) {
+#             compare_preds_df$levels_2 <- cut(
+#               compare_preds_df$raw_values_2,
+#               breaks = breaks,
+#               labels = labels,
+#               include.lowest = TRUE
+#             )
+#           } else {
+#             compare_preds_df$levels_2 <- factor(compare_preds_df$raw_values_2)
+#           }
+
+#           # Paste levels of both predicoturs for using in the plots
+#           compare_preds_df$levels <- factor(paste(
+#             compare_preds_df$levels_1,
+#             compare_preds_df$levels_2,
+#             sep = ":"
+#           ))
 #         } else {
 #           if (is_interaction) {
-#           # Interaction Case when both interaction terms are factors
-#           comp_raw_values <- paste(
-#             compare_preds_df[[term_stripped[1]]],
-#             compare_preds_df[[term_stripped[2]]],
-#             sep = ":"
-#           )
-#         } else {
-#           # Not an interaction case
-#           comp_raw_values <- compare_preds_df[[term_stripped]]
-#         }
-#          # Numeric terms are cut into factors
-#         if (
-#           is.numeric(comp_raw_values) &&
-#             (!all(comp_raw_values %% 1 == 0) |
-#               length(unique(comp_raw_values)) > 10)
-#         ) {
-#           comp_levels <- cut(
-#             comp_raw_values,
-#             breaks = breaks,
-#             labels = labels,
-#             include.lowest = TRUE
-#           )
-#         } else {
-#           comp_levels <- factor(comp_raw_values)
-#         }
+#             # Interaction Case when both interaction terms are factors
+#             compare_preds_df$raw_values <- paste(
+#               compare_preds_df[[term_stripped[1]]],
+#               compare_preds_df[[term_stripped[2]]],
+#               sep = ":"
+#             )
+#           } else {
+#             # Not an interaction case
+#             compare_preds_df$raw_values <- compare_preds_df[[term_stripped]]
+#           }
+#           # Numeric terms are cut into factors
+#           if (
+#             is.numeric(compare_preds_df$raw_values) &&
+#               (!all(compare_preds_df$raw_values %% 1 == 0) |
+#                 length(unique(compare_preds_df$raw_values)) > 10)
+#           ) {
+#             compare_preds_df$levels <- cut(
+#               compare_preds_df$raw_values,
+#               breaks = breaks,
+#               labels = labels,
+#               include.lowest = TRUE
+#             )
+#           } else {
+#             compare_preds_df$levels <- factor(compare_preds_df$raw_values)
+#           }
 #         }
 
-               
-#         comp_preds <- compare_preds_list$preds
 #         comp_V <- compare_preds_list$V
 #         comp_X_centered <- compare_preds_list$X_centered
 #         comp_assign <- compare_preds_list$assign
@@ -1591,7 +1723,7 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
 
 #         comp_coeffs <- compare_preds_df %>%
 #           mutate(row_id = row_number()) %>%
-#           group_by(term = !!comp_levels) %>%
+#           group_by(term = levels) %>%
 #           summarise(
 #             coef = mean(!!fit_colname),
 #             count = n(),
@@ -1643,7 +1775,7 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
 #             TRUE ~ '✔'
 #           )
 #         )
-#         }
+#       }
 
 #       # (1) Coefficients  Plot
 #       #_____________________________________________________________________________
@@ -1653,7 +1785,7 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
 
 #       # Create plot theme depending on the term:
 
-#       if ((length(levels(levels)) > 12)) {
+#       if ((length(levels(preds$levels)) > 12)) {
 #         # Vertical labels and tighter margins
 #         dynamic_theme <- theme(
 #           axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
@@ -1782,8 +1914,8 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL) {
 #       if (
 #         compareOn && paste0('fit.', term_label) %in% names(compare_preds_df)
 #       ) {
-#         comp_distrs <- comp_preds %>%
-#           group_by(focus = .[[year]], term = comp_levels) %>%
+#         comp_distrs <- compare_preds_df %>%
+#           group_by(focus = .[[year]], term = levels) %>%
 #           summarise(count = n(), .groups = "drop_last") %>%
 
 #           mutate(
