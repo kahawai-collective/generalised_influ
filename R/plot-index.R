@@ -337,9 +337,17 @@ plot_sos <- function(cidx,
                      landings_data = NULL, 
                      plot_exploitation = TRUE, 
                      cpue_smooth = FALSE, 
-                     bmsy_proxy = 40){
+                     bmsy_proxy = 40,
+                    ref_mean_type = 'geometric'){
   
-  # ref_name <- unique(cidx$Series)[ref_series]
+  ref_mean <- function(x) {
+    if (ref_mean_type == 'geometric') {
+      rmean <- gmean(x)
+    } else if (ref_mean_type == 'arithmetic') {
+      rmean <- mean(x)
+    }
+    return(rmean)
+  }
   
   indices <- cidx %>% 
     filter(is_stan, is_scaled, Series %in% c(CPUE_set, ref_series), tolower(Index)==selected_idx) %>%
@@ -389,7 +397,7 @@ plot_sos <- function(cidx,
     )
     
     # Calculate base value
-    b <- gmean(ref_vals) * ref_mult
+    b <- ref_mean(ref_vals) * ref_mult
     # Calculate stock status indicator:
    below_target <- any( filter(indices, is_ref)  %>%
   slice_max(order_by = level, n = 3) %>%
@@ -481,7 +489,7 @@ plot_sos <- function(cidx,
       theme_cowplot() +
       theme(axis.text.x = element_text(vjust = 1, hjust = 1, angle = 45, size = rel(0.7))) +
       if(!is.null(ref_period)){
-        geom_hline(yintercept=gmean(landings$erate[ landings$is_ref & landings$level %in% ref_period])/ref_mult,
+        geom_hline(yintercept=ref_mean(landings$erate[ landings$is_ref & landings$level %in% ref_period])/ref_mult,
                    linetype='longdash', col='seagreen')
       }
     
