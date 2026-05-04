@@ -28,8 +28,15 @@ plot_step <- function(step_df, compare_step_df = NULL){
         )
       )
   })%>%bind_rows()
-  
-  # ---Comparison logic---
+
+  legend_labels <- c(
+    "Reduced" = "Reduced models",
+    "Previous"   = "Before adding current predictor",
+    # "Compare"    = paste("Previous update to", max(as.numeric(as.character(compare_step_df$level)))),
+    "Current"    = "Current"
+  )
+  # --
+  # -Comparison logic---
   if(!is.null(compare_step_df)){
     
     # transform comparison df and merge it with  all steps df
@@ -37,14 +44,11 @@ plot_step <- function(step_df, compare_step_df = NULL){
       bind_rows(compare_step_df %>%
                   mutate(FacetTarget = Model,
                          LineType = 'Compare')) 
+    
+    legend_labels <- c(legend_labels, "Compare"    = paste("Previous update to", max(as.numeric(as.character(compare_step_df$level)))))
   }
   # ---End of comparison logic---
-  legend_labels <- c(
-    "Reduced" = "Reduced models",
-    "Previous"   = "Before adding current predictor",
-    "Compare"    = paste("Previous update to", max(as.numeric(as.character(compare_step_df$level)))),
-    "Current"    = "Current"
-  )
+  
   
   df_all_steps$LineType <- factor(df_all_steps$LineType, levels = names(legend_labels)) 
   
