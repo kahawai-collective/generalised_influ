@@ -471,7 +471,6 @@ spatial_DHARMares <- function(diag_metrics, coastline = NULL, statareas = NULL, 
     st_transform(3994) %>%
     st_make_valid()
 
-
 bbox <- st_bbox(data_sf)
   
  # Land map  
@@ -548,7 +547,7 @@ results_list <- lapply(time_periods, function(period) {
   # Create an empty vector the exact length of the original DHARMa data
   full_length_group <- rep(NA, length(diag_metrics$scaledResiduals))
   
-  # 2. Inject the valid grid IDs into their exact original row positions
+  # Inject the valid grid IDs into their exact original row positions
   full_length_group[data_this_period$orig_row_id] <- data_this_period$grid_id
 
   dharma_recalculated <- recalculateResiduals(diag_metrics, sel = data_this_period$orig_row_id,   
@@ -580,7 +579,7 @@ results_list <- lapply(time_periods, function(period) {
 )
   
 
-  p <- NULL
+  plot_grid <- NULL
   stats_row <- NULL
   
   # ---------------------------------------------
@@ -591,11 +590,36 @@ results_list <- lapply(time_periods, function(period) {
 # Join back to the grid for plotting
 plot_grid <- grid %>%
   inner_join(res_df, by = "grid_id") 
-      
-plot_grid$period_label <- period_label
+plot_grid$period_label <- as.character(period_label)
+  }
 
-# ----- plot code -----
- p <- ggplot() +
+  # ---------------------------------------------
+  # OPTION B: Generate Stats (if in years_for_stats)
+  # ---------------------------------------------
+
+  if (list(period) %in% years_for_stats) {
+  # store Moran's I p-value for further use e.g. in traffic light table 
+  # Rescale Moran's I to Z value so that we can compare it across years
+  MoransI_z_score  <- as.numeric((Moran_test$statistic["observed"] - Moran_test$statistic["expected"]) / Moran_test$statistic["sd"])
+
+  # calculate proportion of spatial residuals in the tails of the distribution
+  tail_prop <- mean(abs(res_df$dharma_norm) > 1.96)
+    
+    stats_row <- data.frame("period" = period_label,
+    'MoransI_z_score' = MoransI_z_score,
+    'tail_prop' = tail_prop
+    )
+  }
+ 
+  return(list(plot_grid = plot_grid, stats_row = stats_row))
+    }
+)
+  plot_grid_list <- lapply(results_list, function(x) x$plot_grid)
+  plot_grid <- Filter(Negate(is.null), plot_grid_list) %>%dplyr::bind_rows()
+
+  # ---- Plot code ------
+
+  combined_plot <- ggplot() +
     geom_sf(data = plot_grid, 
       aes(fill = dharma_norm),
       color = NA) + 
@@ -618,45 +642,11 @@ plot_grid$period_label <- period_label
    scale_x_continuous(n.breaks = 4) +
    scale_y_continuous(n.breaks = 4) +
    coord_sf(xlim = c(bbox["xmin"], bbox["xmax"]),
-             ylim = c(bbox["ymin"], bbox["ymax"]),
-             expand = FALSE) +
-   facet_wrap(~period_label) +
-   ggplot2::guides(
-      fill = ggplot2::guide_colourbar(),
-      colour = "none"
-    ) +
-    cowplot::theme_cowplot(font_size = 12) 
-  }
-
-  # ---------------------------------------------
-  # OPTION B: Generate Stats (if in years_for_stats)
-  # ---------------------------------------------
-
-  if (list(period) %in% years_for_stats) {
-  # store Moran's I p-value for further use e.g. in traffic light table 
-  # Rescale Moran's I to Z value so that we can compare it across years
-  MoransI_z_score  <- as.numeric((Moran_test$statistic["observed"] - Moran_test$statistic["expected"]) / Moran_test$statistic["sd"])
-
-  # calculate proportion of spatial residuals in the tails of the distribution
-  tail_prop <- mean(abs(res_df$dharma_norm) > 1.96)
-    
-    stats_row <- data.frame("period" = period_label,
-    'MoransI_z_score' = MoransI_z_score,
-    'tail_prop' = tail_prop
-    )
-  }
- 
-  return(list(plot = p, stats_row = stats_row))
-    }
-)
-  plots_list <- lapply(results_list, function(x) x$plot)
-  plots_list <- Filter(Negate(is.null), plots_list)
-
-  # ---- Combine plots ------
-
-  combined_plot <- wrap_plots(plots_list, ncol = 2) + 
-  plot_layout(guides = 'collect') & 
-  ggplot2::theme(
+             ylim = c(bbox["ymin"], bbox["ymax"])) +
+   facet_wrap(~period_label, ncol = 2) +
+   guides(fill = guide_colourbar()) +
+    cowplot::theme_cowplot(font_size = 14) +
+   theme(
     legend.position = 'right',
     legend.title = ggplot2::element_text(size = 12),
     legend.text  = ggplot2::element_text(size = 10),
@@ -672,7 +662,6 @@ plot_grid$period_label <- period_label
     plot.margin      = grid::unit(c(0, 0, 0, 0), "mm")   
   )
 
-combined_plot
     
   # ---- Extract Metadata Table ------
  stats_df <- bind_rows(lapply(results_list, function(x) x$stats_row))
