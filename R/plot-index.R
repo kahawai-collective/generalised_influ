@@ -425,7 +425,7 @@ plot_sos <- function(cidx,
     
     # Layer 2: Foreground (The reference series only)
     geom_line(data = filter(indices, is_ref), aes(color = Series)) +
-    geom_linerange(data = filter(indices, is_ref), aes(ymin = Lower, ymax = Upper, color = Series), size = 0.5) +
+    geom_linerange(data = filter(indices, is_ref), aes(ymin = Lower, ymax = Upper, color = Series), linewidth = 0.5) +
     
     scale_color_manual(name = "Series", values = series_colors) +
     scale_y_continuous('CPUE index', limits = c(0, NA)) +

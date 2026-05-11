@@ -450,7 +450,7 @@ boxplot_DHARMares <- function(diag_metrics) {
 #' @export
 #'
 #' 
-spatial_DHARMares <- function(diag_metrics, coastline = NULL, plot_time_periods = 'all', grid_size=10, thresh=3, sea_only = FALSE) {
+spatial_DHARMares <- function(diag_metrics, coastline = NULL, statareas = NULL, statarea_lab = NULL, plot_time_periods = 'all', grid_size=10, thresh=3, sea_only = FALSE) {
 
   # ---- prepare map data ------
   # Calculate extreme limits based on the data's distribution (use 3x IQR as a threshold)
@@ -474,6 +474,7 @@ spatial_DHARMares <- function(diag_metrics, coastline = NULL, plot_time_periods 
 
 bbox <- st_bbox(data_sf)
   
+ # Land map  
   if(!is.null(coastline)){
 # Crop coastline to bbox
 coastline <- coastline %>%
@@ -486,6 +487,20 @@ coastline <- coastline %>%
       }
   } else if (sea_only) {
     warning("sea_only = TRUE was requested, but no coastline object was provided. Skipping land filter.")
+  }
+  
+  # NZ statistical areas
+  if(!is.null(statareas)) {
+    my_statareas <- statareas %>%
+      st_transform(3994) %>%
+      st_crop(bbox)
+   }
+  
+  # Labels for statistical areas
+  if(!is.null(statarea_lab)){
+    my_labs <- statarea_lab %>%
+    sf::st_transform(3994) %>%
+    sf::st_crop(bbox)
   }
   
   grid_size <- grid_size*1000 # Define side length: convert km to meters for the EPSG:3994 projection
@@ -575,7 +590,9 @@ results_list <- lapply(time_periods, function(period) {
     if ( list(period) %in% plot_time_periods){
 # Join back to the grid for plotting
 plot_grid <- grid %>%
-  inner_join(res_df, by = "grid_id")
+  inner_join(res_df, by = "grid_id") 
+      
+plot_grid$period_label <- period_label
 
 # ----- plot code -----
  p <- ggplot() +
@@ -583,7 +600,14 @@ plot_grid <- grid %>%
       aes(fill = dharma_norm),
       color = NA) + 
    (if(!is.null(coastline)){
-  geom_sf(data = coastline, fill = "grey80", color = "grey40") 
+  geom_sf(data = coastline, colour = NA, fill = "grey50") 
+   }) +
+   (if(!is.null(statareas)){
+  geom_sf(data = my_statareas, colour = "azure4", fill = NA, linewidth = 0.1) 
+   }) +
+   (if(!is.null(statarea_lab)){
+  geom_sf(data = my_labs, ggplot2::aes(label = area_code),
+                          colour = "gray70", size = 2) 
    }) +
     scale_fill_gradientn(
     name = 'Residual',
@@ -596,14 +620,12 @@ plot_grid <- grid %>%
    coord_sf(xlim = c(bbox["xmin"], bbox["xmax"]),
              ylim = c(bbox["ymin"], bbox["ymax"]),
              expand = FALSE) +
-   labs(title = paste0("Time period: ", period_label, 
-                       "\nMoran's I p-val: ", p_val_text)) +
-   theme_bw() +
-   theme(
-      plot.title = element_text(size = 8, lineheight = 1.1, margin = margin(b = 5)),
-      axis.text.x = element_text(angle = 0, hjust = 0.5, size = 8), 
-      axis.text.y = element_text(angle = 90, hjust = 0.5, size = 8) 
-    )
+   facet_wrap(~period_label) +
+   ggplot2::guides(
+      fill = ggplot2::guide_colourbar(),
+      colour = "none"
+    ) +
+    cowplot::theme_cowplot(font_size = 12) 
   }
 
   # ---------------------------------------------
@@ -625,7 +647,7 @@ plot_grid <- grid %>%
   }
  
   return(list(plot = p, stats_row = stats_row))
-}
+    }
 )
   plots_list <- lapply(results_list, function(x) x$plot)
   plots_list <- Filter(Negate(is.null), plots_list)
@@ -633,8 +655,24 @@ plot_grid <- grid %>%
   # ---- Combine plots ------
 
   combined_plot <- wrap_plots(plots_list, ncol = 2) + 
-  plot_layout(guides = 'collect')  & 
-  theme(legend.position = 'right')
+  plot_layout(guides = 'collect') & 
+  ggplot2::theme(
+    legend.position = 'right',
+    legend.title = ggplot2::element_text(size = 12),
+    legend.text  = ggplot2::element_text(size = 10),
+    axis.text = ggplot2::element_text(size = 10),
+    strip.text = ggplot2::element_text(
+      size = 14, 
+      margin = ggplot2::margin(t = 6, b = 6) # Adds space above and below the text
+    ),
+    strip.background = ggplot2::element_rect(
+      colour = "white",     # White border to blend with the plot background
+      linewidth = 2         # Thickness of the fake gap
+    ),
+    plot.margin      = grid::unit(c(0, 0, 0, 0), "mm")   
+  )
+
+combined_plot
     
   # ---- Extract Metadata Table ------
  stats_df <- bind_rows(lapply(results_list, function(x) x$stats_row))
