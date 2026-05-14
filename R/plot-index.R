@@ -326,6 +326,7 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
 #'
 #' @return A patchwork ggplot object.
 #' @importFrom cowplot theme_cowplot 
+#' @importFrom scales label_percent 
 #' @export
 
 plot_sos <- function(cidx, 
@@ -402,6 +403,10 @@ plot_sos <- function(cidx,
    below_target <- any( filter(indices, is_ref)  %>%
   slice_max(order_by = level, n = 3) %>%
   pull(index) < b)
+    
+  currentIdx <- filter(indices, is_ref) %>% slice_max(order_by = level, n = 1, with_ties = FALSE) %>% pull(index)  
+  idxVsTarget <- scales::percent(currentIdx / b)
+
     
     # Add B10, B20, B40 and reference period to the plot
     g1 <- g1 + geom_hline(yintercept = b * c(1, 20/bmsy_proxy, 10/bmsy_proxy), 
@@ -513,6 +518,7 @@ plot_sos <- function(cidx,
   
   if(!is.null(ref_period)){
   plot_combined@meta$below_target <- below_target
+  plot_combined@meta$idxVsTarget <- idxVsTarget
   }
 
   return(plot_combined)
