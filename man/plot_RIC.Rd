@@ -4,7 +4,13 @@
 \alias{plot_RIC}
 \title{Plot Residual Implied Index}
 \usage{
-plot_RIC(fit, grouping_var = "stat_area", min_records = 10, add.rho = TRUE)
+plot_RIC(
+  fit,
+  grouping_var = "stat_area",
+  min_records = 10,
+  add.rho = TRUE,
+  custom_palette = default_palette
+)
 }
 \arguments{
 \item{fit}{A fitted model object}

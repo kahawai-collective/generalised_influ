@@ -192,6 +192,7 @@ plot_index <- function(index,
 #' @import dplyr
 #' @import ggplot2
 #' @importFrom cowplot theme_cowplot 
+#' @importFrom ggrepel geom_text_repel
 #' @export
 
 compare_indices <- function(cidx, 
@@ -310,9 +311,19 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
                            ymin = Lower,
                            ymax = Upper,
                            linetype = `Index type`,
-                           shape = `Index type`,
                            col = Series, 
                            group = interaction(Series, `Index type`))) +
+    geom_text_repel(data = indices %>%
+            group_by(Series, `Index type`) %>%
+            filter(level == max(level)) %>%
+            ungroup(),            # Use only the final points
+    aes(label = Series),          # Label them with the Series name
+    nudge_x = 0.5,                # Nudge text slightly to the right of the line
+    direction = "y",              # If labels overlap, push them up/down to resolve
+    hjust = 0,                    # Left-align the text
+    show.legend = FALSE,          
+    size = 3.5                    
+  ) +
     # Conditional Layers
     ( if (normalise_ENSO){
       scale_y_continuous("CPUE index", limits = c(-1.1, 1.1))
@@ -324,8 +335,26 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
       )
     }) +
     geom_line() +
-    geom_point(size = 2) +
-    scale_x_continuous("Fishing year", breaks = unique(indices$level)) +
+    
+    # add points, different shapes are only uysed for multispecies (non accepted series should have crossed out point). 
+    {
+    if ("is_reference" %in% names(indices)) {
+      
+      # If the column exists, map it to shape and apply  pch values
+      list(
+        geom_point(aes(shape = as.character(is_reference)), size = 3),
+        scale_shape_manual(values = c("TRUE" = 19, "FALSE" = 13), 
+        labels = c("TRUE" = "Reference index", "FALSE" = "Non-reference index"))
+      )
+      
+    } else {
+      
+      # If it doesn't exist, just draw normal solid dots and no shape legend
+      geom_point(size = 2)
+      
+    }
+  } +
+    scale_x_continuous("Fishing year", breaks = unique(indices$level), expand = expansion(mult = c(0.02, 0.3))) +
     scale_y_continuous(limits = function(x) c(0, max(pretty(x))), 
     expand = c(0, 0))+
     scale_color_manual(values = myColors) +
@@ -336,13 +365,26 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
           legend.direction = "vertical") +
     custom_theme
   
-  
+  # Legend options: 
+  # a) do not show linetype legend if there is only one type
   if (length(unique(indices$`Index type`)) == 1) {
     # number of cols is 2 for 4+ series, and one row otherwise
-    g <- g +guides(linetype = "none", shape = "none", colour = guide_legend(ncol = min(n_series, 2 + (n_series == 3))))
+    g <- g +guides(linetype = "none", colour = guide_legend(ncol = min(n_series, 2 + (n_series == 3))))
     
-  }
+  }  else {
   
+  # If there are multiple index types, show the linetype legend, but force the points (shapes) to be invisible inside it
+  g <- g + guides(
+    linetype = guide_legend(override.aes = list(shape = NA))
+  )
+    
+}
+  # b) hide shape legend if there is no variation in reference status (i.e., all series are either reference or non-reference)
+  n_ref_types <- if ("is_reference" %in% names(indices)) length(unique(indices$is_reference)) else 1
+  if (n_ref_types == 1) {
+  g <- g + guides(shape = "none")
+}
+
   g@meta$series_stats <- series_stats
 
   return(g)

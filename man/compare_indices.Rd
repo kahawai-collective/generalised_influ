@@ -12,7 +12,9 @@ compare_indices(
   alt_CPUE2 = NULL,
   series_alt2 = NULL,
   normalise_ENSO = FALSE,
-  uncert = F
+  uncert = F,
+  custom_theme = NULL,
+  custom_palette = default_palette
 )
 }
 \arguments{

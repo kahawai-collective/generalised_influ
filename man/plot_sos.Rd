@@ -14,7 +14,9 @@ plot_sos(
   plot_exploitation = TRUE,
   cpue_smooth = FALSE,
   bmsy_proxy = 40,
-  ref_mean_type = "geometric"
+  ref_mean_type = "geometric",
+  custom_theme = NULL,
+  custom_palette = default_palette
 )
 }
 \arguments{

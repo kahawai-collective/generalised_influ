@@ -4,7 +4,7 @@
 \alias{plot_DHARMares}
 \title{Plot DHARMa Residuals for GLM2 and Survreg}
 \usage{
-plot_DHARMares(diag_metrics)
+plot_DHARMares(diag_metrics, custom_palette = default_palette)
 }
 \arguments{
 \item{fit}{A fitted model object (of class glm, glm2, or survreg).}

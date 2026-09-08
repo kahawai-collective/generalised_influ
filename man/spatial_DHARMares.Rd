@@ -12,7 +12,9 @@ spatial_DHARMares(
   plot_time_periods = "all",
   grid_size = 10,
   thresh = 3,
-  sea_only = FALSE
+  sea_only = FALSE,
+  FirstYearSpatialData = 2008,
+  custom_palette = default_palette
 )
 }
 \arguments{

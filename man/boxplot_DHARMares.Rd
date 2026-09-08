@@ -4,7 +4,11 @@
 \alias{boxplot_DHARMares}
 \title{Plot DHARMa Residuals Against Model Predictors}
 \usage{
-boxplot_DHARMares(diag_metrics)
+boxplot_DHARMares(
+  diag_metrics,
+  custom_theme = NULL,
+  custom_palette = default_palette
+)
 }
 \arguments{
 \item{fit}{A fitted model object (e.g., from \code{lme4}, \code{glmmTMB}, or \code{glm}).}

@@ -4,12 +4,15 @@
 \alias{cdi_plot_with_indicators}
 \title{Plot Coefficient Distribution and Influence (CDI) and calculate comparison traffic light metrics}
 \usage{
-cdi_plot_with_indicators(preds_list, compare_preds_list = NULL)
+cdi_plot_with_indicators(
+  preds_list,
+  compare_preds_list = NULL,
+  custom_theme = theme_bw(),
+  custom_palette = default_palette
+)
 }
 \arguments{
-\item{fit}{A fitted model object (e.g., from `glm` or `gam`).}
-
-\item{year}{Character string. The name of the temporal column (e.g., "fyear")
+\item{fit}{A fitted model object (e.g., from `glm` or `gam`).
 to be used as the focus variable on the y-axis of the distribution plot.}
 }
 \description{

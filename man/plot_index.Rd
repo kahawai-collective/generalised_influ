@@ -7,17 +7,16 @@
 plot_index(
   index,
   component = "Combined",
-  fill = "black",
   probs = c(0.25, 0.75),
   rescale = 1,
   show_unstandardised = TRUE,
-  overlay = FALSE
+  overlay = FALSE,
+  custom_theme = NULL,
+  custom_palette = default_palette
 )
 }
 \arguments{
 \item{index}{A dataframe with unstan and stan idex for the model.}
-
-\item{fill}{the fill colour for the percentiles.}
 
 \item{probs}{The percentiles to be computed by the \code{quantile} function.}
 
@@ -26,6 +25,8 @@ plot_index(
 \item{show_unstandardised}{show the unstandardised series or not.}
 
 \item{year}{the year or time label.}
+
+\item{fill}{the fill colour for the percentiles.}
 }
 \value{
 a \code{ggplot} object.
