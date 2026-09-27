@@ -522,7 +522,7 @@ cdi_plot_with_indicators <- function(preds_list, compare_preds_list = NULL, cust
         scale_x_discrete(drop = FALSE, labels = x_labels) +
         custom_theme +
         background_grid(major = "xy", minor = "none") +
-        labs(x = cleanup_labels(term_stripped), y = tools::toTitleCase(year)) +
+        labs(x = cleanup_labels(term_stripped), y = cleanup_labels(year)) +
         dynamic_theme +
         common_theme
 

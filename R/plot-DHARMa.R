@@ -247,8 +247,8 @@ plot_DHARMares <- function(diag_metrics, custom_palette = default_palette) {
       colour = main_colour
     ) +
     labs(
-      x = 'DHARMa resid. theoretical quantile',
-      y = 'DHARMa resid. sample quantile'
+      x = 'Theoretical quantile',
+      y = 'Sample quantile (DHARMa residuals)'
     ) +
     geom_abline(intercept = 0, linetype = 'dotted', colour = 'blue') +
     theme_classic() 
@@ -439,7 +439,7 @@ boxplot_DHARMares <- function(diag_metrics, custom_theme = NULL, custom_palette 
         fill = "gray30"   # The base color that will fade from light to dark
       )
     )) +
-        labs(x = term_label, y = "DHARMa Residuals", fill = "Kolmogorov–Smirnov test") +
+        labs(x = cleanup_labels(term_label), y = "DHARMa residuals", fill = "Kolmogorov–Smirnov test") +
         scale_x_discrete(drop = FALSE, labels = x_labels) +
         theme_minimal() +
       custom_theme +

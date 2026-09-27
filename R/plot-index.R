@@ -345,7 +345,7 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
     }
   } +
     scale_x_continuous("Fishing year", breaks = unique(indices$level)) +
-    scale_y_continuous(limits = function(x) c(0, max(pretty(x))), 
+    scale_y_continuous("Index", limits = function(x) c(0, max(pretty(x))), 
     expand = c(0, 0))+
     scale_color_manual(values = myColors) +
     theme_cowplot() +

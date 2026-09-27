@@ -207,9 +207,15 @@ cleanup_labels <- Vectorize(function(terms_labels) {
   vars <- all.vars(as.formula(paste("~", str_remove_all(terms_labels, "`"))))
   
   # Clean
-  clean_vars <- str_replace_all(vars, c("fyear" = "fishing year", "_" = " "))
+  clean_vars <- str_replace_all(vars, c(
+    "fyear" = "fishing year",
+    "effort_num" = "effort number",
+    "stat_area"  = "Statistical Area",
+
+    "_" = " "))
   
-  # Collapse and capitalize
-  str_to_sentence(paste(clean_vars, collapse = " \u00D7 "))
+  # Collapse and capitalise
+  str_replace(paste(clean_vars, collapse = " \u00D7 "), "^.", toupper)
+
   
 }, USE.NAMES = FALSE)
