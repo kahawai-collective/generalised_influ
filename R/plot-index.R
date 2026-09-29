@@ -375,19 +375,17 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
   # a) do not show linetype legend if there is only one type
   if (length(unique(indices$`Index type`)) == 1) {
     # number of cols is 2 for 4+ series, and one row otherwise
-    g <- g +guides(linetype = "none", colour = guide_legend(ncol = min(n_series, 2 + (n_series == 3)),
-    label.theme = element_text(margin = margin(l = 5, r = 20, unit = "pt"))))
+    g <- g +guides(linetype = "none", colour = guide_legend(ncol = min(n_series, 2 + (n_series == 3))))
     
   }  else {
   
   # If there are multiple index types, show the linetype legend, but force the points (shapes) to be invisible inside it
   g <- g + guides(
-    linetype = guide_legend(override.aes = list(shape = NA),
-    label.theme = element_text(margin = margin(l = 5, r = 20, unit = "pt"))
-  ))
+    linetype = guide_legend(override.aes = list(shape = NA))
+  )
     
 }
-  # b) hide shape legend if there is no variation in reference status (i.e., all series are either reference or non-reference)
+  # Hide shape legend if there is no variation in reference status (i.e., all series are either reference or non-reference)
   n_ref_types <- if ("is_reference" %in% names(indices)) length(unique(indices$is_reference)) else 1
   if (n_ref_types == 1) {
   g <- g + guides(shape = "none")
