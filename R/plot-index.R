@@ -199,32 +199,48 @@ compare_indices <- function(cidx,
                             CPUE_set, 
                             alt_CPUE1 = NULL, 
                             series_alt1 = NULL,
+                            seriesname_alt1 = NULL,
                             alt_CPUE2 = NULL, 
                             series_alt2 = NULL,
+                            seriesname_alt2 = NULL,
                             normalise_ENSO = FALSE,
                             uncert=F,
                             custom_theme = NULL, 
                             custom_palette = default_palette){
                         
-  # if(length(component)==1) component <- rep(component, length(CPUE_set))
-  
+    
   # helper function to filter idx and add idx rescaled between -1 and 1.
-process_idx <- function(idx, series_set) {
+process_idx <- function(idx, series_set = NULL) {
     idx %>% 
-      filter(is_stan, is_scaled, Series %in% series_set, tolower(Index)==selected_idx) %>%
-      group_by(Series) %>%
-      mutate(index.norm = 2 * ((median - min(median)) / (max(median) - min(median))) - 1)
+    filter(
+      if ("is_stan" %in% names(idx)) is_stan else TRUE,
+      if ("is_scaled" %in% names(idx)) is_scaled else TRUE,
+      if ("Series" %in% names(idx) && !is.null(series_set)) Series %in% series_set else TRUE,
+      tolower(Index) == selected_idx
+    ) %>%
+    
+    # Safely group by Series only if it exists; otherwise do nothing
+    group_by(across(any_of("Series"))) %>%
+    
+    # Apply rescaling
+    mutate(index.norm = 2 * ((median - min(median, na.rm = TRUE)) / 
+                             (max(median, na.rm = TRUE) - min(median, na.rm = TRUE))) - 1)
   }
     
   indices <- process_idx(cidx, CPUE_set)
   
-  if(!is.null(alt_CPUE1)) indices <- bind_rows(indices %>%
-    mutate(Series = as.character(max(level))), process_idx(alt_CPUE1, series_alt1) %>% mutate(Series = as.character(max(level))))%>%
+  if(!is.null(alt_CPUE1)) indices <- bind_rows(
+    indices %>%
+     mutate(Series = as.character(max(level))), 
+    process_idx(alt_CPUE1, series_alt1) %>% 
+      mutate(Series = paste(as.character(max(level)), seriesname_alt1))) %>%
     arrange(Series)
     
   
-  if(!is.null(alt_CPUE2)) indices <- bind_rows(indices %>% 
-    mutate(Series = paste(Series, 'UPDATE_2')), process_idx(alt_CPUE2, series_alt2) )%>%
+  if(!is.null(alt_CPUE2)) indices <- bind_rows(
+    indices,
+    process_idx(alt_CPUE2) %>%
+    mutate(Series = paste(as.character(max(level)), seriesname_alt2))) %>% 
     arrange(Series)
     
   overlap <- indices %>%
@@ -263,7 +279,8 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
   # If calculating for overlapping period: Removes any row where either series is NA 
   if (mode == "overlap")   df <- na.omit(df)
      
-  smooth_cur  <- predict(loess(cur ~ lvl, data = df, span = 0.9, control = loess.control(surface = "direct"), na.action = na.omit))
+  smooth_cur  <- predict(loess(cur ~ lvl, data = df, span = 0.9, control = loess.control(surface = "direct"), na.action = na.omit),
+  newdata = data.frame(lvl = df$lvl))
   smooth_last <- predict(loess(lst ~ lvl, data = df, span = 0.9, control = loess.control(surface = "direct"), na.action = na.omit),
    newdata = data.frame(lvl = df$lvl))
   
@@ -283,13 +300,12 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
     select(level, Series, index) %>%
           
     pivot_wider(names_from = Series, values_from = index) %>%
-    rename_with(~ ifelse(as.numeric(.x) == max(as.numeric(.x)), "current", "last"),
-                .cols = -level) %>%
+    rename(this_idx = 2, alt_idx = 3) %>%
     arrange(level) %>%
     summarise(
-      Level_Div = level_divergence(current, last),
-      Trend_Div_Overlap = trend_divergence(current, last, level, mode = "overlap"),
-      Trend_Div_Full = trend_divergence(current, last, level, mode = "full")
+      Level_Div = level_divergence(this_idx, alt_idx),
+      Trend_Div_Overlap = trend_divergence(this_idx, alt_idx, level, mode = "overlap"),
+      Trend_Div_Full = trend_divergence(this_idx, alt_idx, level, mode = "full")
     )
 
 } else {series_stats <- NULL}
@@ -300,7 +316,7 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
   myColors <- if(is.null(alt_CPUE1)) {
     unname(custom_palette[c( 'extra2', 'extra1', 'current', 'extra3', 'extra4', 'extra5')])
     } else {
-      unname(custom_palette[c( 'previous', 'current')])
+      unname(custom_palette[c( 'previous',  'current', 'extra4')])
     }
     
   n_series <- length(unique(indices$Series))
@@ -359,14 +375,16 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
   # a) do not show linetype legend if there is only one type
   if (length(unique(indices$`Index type`)) == 1) {
     # number of cols is 2 for 4+ series, and one row otherwise
-    g <- g +guides(linetype = "none", colour = guide_legend(ncol = min(n_series, 2 + (n_series == 3))))
+    g <- g +guides(linetype = "none", colour = guide_legend(ncol = min(n_series, 2 + (n_series == 3)),
+    label.theme = element_text(margin = margin(l = 5, r = 20, unit = "pt"))))
     
   }  else {
   
   # If there are multiple index types, show the linetype legend, but force the points (shapes) to be invisible inside it
   g <- g + guides(
-    linetype = guide_legend(override.aes = list(shape = NA))
-  )
+    linetype = guide_legend(override.aes = list(shape = NA),
+    label.theme = element_text(margin = margin(l = 5, r = 20, unit = "pt"))
+  ))
     
 }
   # b) hide shape legend if there is no variation in reference status (i.e., all series are either reference or non-reference)
@@ -380,7 +398,6 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
   return(g)
   
   }
-
 
 #' Plot Status of the stock 
 #'
