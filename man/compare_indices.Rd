@@ -9,12 +9,15 @@ compare_indices(
   CPUE_set,
   alt_CPUE1 = NULL,
   series_alt1 = NULL,
+  seriesname_alt1 = NULL,
   alt_CPUE2 = NULL,
   series_alt2 = NULL,
+  seriesname_alt2 = NULL,
   normalise_ENSO = FALSE,
   uncert = F,
   custom_theme = NULL,
-  custom_palette = default_palette
+  custom_palette = default_palette,
+  seriesname_main = NULL
 )
 }
 \arguments{
@@ -33,6 +36,11 @@ between -1 and 1. If \code{FALSE}, uses geometric mean scaling relative to the
 overlap period. Defaults to \code{FALSE}.}
 
 \item{uncert}{Logical. If \code{TRUE}, adds uncertainty bars.}
+
+\item{seriesname_main}{Optional character string, appended to the legend label
+of the primary series when \code{alt_CPUE1} is given, e.g. \code{"(reproduced)"}
+gives "2013 (reproduced)". By default the primary series is labelled with its
+final year alone.}
 
 \item{component}{Character vector. The specific \code{Index} type (e.g., 'Positive', 
 'Binomial', 'Combined') to extract from each set. Defaults to 'Positive'.}

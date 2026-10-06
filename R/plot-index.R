@@ -180,6 +180,10 @@ plot_index <- function(index,
 #'   between -1 and 1. If \code{FALSE}, uses geometric mean scaling relative to the 
 #'   overlap period. Defaults to \code{FALSE}.
 #' @param uncert Logical. If \code{TRUE}, adds uncertainty bars.
+#' @param seriesname_main Optional character string, appended to the legend label
+#'   of the primary series when \code{alt_CPUE1} is given, e.g. \code{"(reproduced)"}
+#'   gives "2013 (reproduced)". By default the primary series is labelled with its
+#'   final year alone.
 #'
 #' @details 
 #' The function identifies the "overlap period"—the years common to all included 
@@ -206,7 +210,8 @@ compare_indices <- function(cidx,
                             normalise_ENSO = FALSE,
                             uncert=F,
                             custom_theme = NULL, 
-                            custom_palette = default_palette){
+                            custom_palette = default_palette,
+                            seriesname_main = NULL){
                         
     
   # helper function to filter idx and add idx rescaled between -1 and 1.
@@ -229,9 +234,15 @@ process_idx <- function(idx, series_set = NULL) {
     
   indices <- process_idx(cidx, CPUE_set)
   
+  # Primary series labelled by its final year, plus seriesname_main if given.
+  # Both divergence measures below are symmetric in the two series, so the
+  # label (which sets the column order) does not change them.
+  main_label <- function(yr) {
+    if (is.null(seriesname_main)) as.character(yr) else paste(yr, seriesname_main)
+  }
   if(!is.null(alt_CPUE1)) indices <- bind_rows(
     indices %>%
-     mutate(Series = as.character(max(level))), 
+     mutate(Series = main_label(max(level))), 
     process_idx(alt_CPUE1, series_alt1) %>% 
       mutate(Series = paste(as.character(max(level)), seriesname_alt1))) %>%
     arrange(Series)
