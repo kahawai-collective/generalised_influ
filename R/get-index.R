@@ -366,7 +366,13 @@ get_index <- function(fit, hurdle_fit = NULL, year = NULL, probs = c(0.025, 0.97
     draws$Combined$.value <- draws$Positive$.value * draws$Binomial$.value
   }
   
-  # Do geometric mean transformation to draws, then summarise to find medians and quantiles
+  # Do geometric mean transformation to draws, then summarise each year to the
+  # mean of the draws and their 2.5% / 97.5% quantiles. The point estimate is the
+  # MEAN, as in ghoti's original cidx workflow (mean of 1000 draws, with these
+  # quantiles as bounds), not the median: decided 2026-10-06, issue #8 point 3.
+  # The long format still names the column `median` -- every consumer (cidx.csv,
+  # compare_indices(), get_step(), accepted baselines already written) reads that
+  # name, so the column keeps it while holding the mean.
   
   indices <- setNames(lapply(names(draws), function(idx){
     index_stan <- draws[[idx]] %>%
@@ -379,10 +385,10 @@ get_index <- function(fit, hurdle_fit = NULL, year = NULL, probs = c(0.025, 0.97
       ungroup() %>%
       group_by(level) %>%
       summarise(
-        stan_unscaled = as.numeric(median(.value)),
+        stan_unscaled = as.numeric(mean(.value)),
         stanLower_unscaled = as.numeric(quantile(.value, 0.025)),
         stanUpper_unscaled = as.numeric(quantile(.value, 0.975)),
-        stan = as.numeric(median(rel_idx)),
+        stan = as.numeric(mean(rel_idx)),
         stanLower = as.numeric(quantile(rel_idx, 0.025)),
         stanUpper = as.numeric(quantile(rel_idx, 0.975))
       )
@@ -422,7 +428,8 @@ get_index <- function(fit, hurdle_fit = NULL, year = NULL, probs = c(0.025, 0.97
         #                  labels = c("Standardised", "Unstandardised"))
         
       ) %>%
-      # Pivot 'median', 'Lower', and 'Upper' back into their own columns
+      # Pivot 'median' (the mean of the draws, see above), 'Lower' and 'Upper'
+      # back into their own columns
       pivot_wider(
         names_from = stat, 
         values_from = value
