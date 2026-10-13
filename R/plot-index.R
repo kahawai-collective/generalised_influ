@@ -252,7 +252,9 @@ process_idx <- function(idx, series_set = NULL) {
     indices,
     process_idx(alt_CPUE2) %>%
     mutate(Series = paste(as.character(max(level)), seriesname_alt2))) %>% 
-    arrange(Series)
+    arrange(Series) %>%
+    # love reporudced series to 2nd positon to keep colours consistent
+    mutate(Series = forcats::fct_relevel(Series, grep("reproduced", unique(Series), value = TRUE), after = 1))
     
   overlap <- indices %>%
     group_by(Series, Index) %>%
