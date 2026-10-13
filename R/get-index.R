@@ -421,14 +421,14 @@ get_index <- function(fit, hurdle_fit = NULL, year = NULL, probs = c(0.025, 0.97
         values_drop_na = TRUE
       ) %>%
       mutate(
-        stat = ifelse(stat == "" , "median", stat),
+        stat = ifelse(stat == "" , "mean", stat),
         is_scaled = (is_scaled == ""),
         is_stan = (is_stan=='stan')
         # is_stan = factor(is_stan, levels = c("stan", "unstan"), 
         #                  labels = c("Standardised", "Unstandardised"))
         
       ) %>%
-      # Pivot 'median' (the mean of the draws, see above), 'Lower' and 'Upper'
+      # Pivot 'mean', 'Lower' and 'Upper'
       # back into their own columns
       pivot_wider(
         names_from = stat, 

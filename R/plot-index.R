@@ -51,7 +51,7 @@ plot_index <- function(index,
 
   if (overlay){
     myColors <- unname(custom_palette[c( 'extra2', 'extra1', 'current')])
-    p <- ggplot(index, aes(x = level, y = median, group = Index, colour = Index, fill = Index)) +
+    p <- ggplot(index, aes(x = level, y = mean, group = Index, colour = Index, fill = Index)) +
       geom_ribbon(aes(ymin = Lower, ymax = Upper),
                   data = filter(index, is_stan),
                   color = NA, alpha = 0.1) +
@@ -81,7 +81,7 @@ plot_index <- function(index,
 
     # Faceted or Single Plot
     stan_labels <- c("TRUE" = "Standardised", "FALSE" = "Unstandardised")
-    p <-  ggplot(index, aes(x = level, y = median, group = is_stan)) +
+    p <-  ggplot(index, aes(x = level, y = mean, group = is_stan)) +
       geom_ribbon(aes(ymin = Lower, ymax = Upper), 
                   data = filter(index, is_stan),
                   fill = custom_palette[['main']], color = NA, alpha = 0.1) +
@@ -228,8 +228,8 @@ process_idx <- function(idx, series_set = NULL) {
     group_by(across(any_of("Series"))) %>%
     
     # Apply rescaling
-    mutate(index.norm = 2 * ((median - min(median, na.rm = TRUE)) / 
-                             (max(median, na.rm = TRUE) - min(median, na.rm = TRUE))) - 1)
+    mutate(index.norm = 2 * ((mean - min(mean, na.rm = TRUE)) / 
+                             (max(mean, na.rm = TRUE) - min(mean, na.rm = TRUE))) - 1)
   }
     
   indices <- process_idx(cidx, CPUE_set)
@@ -266,8 +266,8 @@ process_idx <- function(idx, series_set = NULL) {
     group_by(Series, Index) %>%
     mutate(
       # Calculate gmean only on the subset that falls in the overlap
-      gmeans = gmean(median[level >= overlap$start & level <= overlap$end]),
-      index  = median / gmeans,
+      gmeans = gmean(mean[level >= overlap$start & level <= overlap$end]),
+      index  = mean / gmeans,
       Lower = Lower / gmeans,
       Upper = Upper / gmeans
     ) %>%
@@ -470,8 +470,8 @@ plot_sos <- function(cidx,
     group_by(Series, Index) %>%
     mutate(
       # Calculate gmean only on the subset that falls in the overlap
-      gmeans = gmean(median[level >= overlap$start & level <= overlap$end]),
-      index  = median / gmeans,
+      gmeans = gmean(mean[level >= overlap$start & level <= overlap$end]),
+      index  = mean / gmeans,
       Lower  = Lower / gmeans,
       Upper  = Upper / gmeans
     ) 

@@ -91,7 +91,7 @@ get_step <- function(fit, pred_grid = NULL, predictor = NULL) {
       
       # Store column of indices
       effects[[idx_name]] <- idx_reduced %>%
-        filter(is_stan, is_scaled)%>% select(Index, level, median, Lower, Upper)
+        filter(is_stan, is_scaled)%>% select(Index, level, mean, Lower, Upper)
       
     } else {
       term = 'intercept'
