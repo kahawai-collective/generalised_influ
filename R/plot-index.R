@@ -399,8 +399,8 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
     
 }
   # Hide shape legend if there is no variation in reference status (i.e., all series are either reference or non-reference)
-  n_ref_types <- if ("is_reference" %in% names(indices)) length(unique(indices$is_reference)) else 1
-  if (n_ref_types == 1) {
+  isref_legend <- "is_reference" %in% names(indices) && FALSE %in% indices$is_reference
+  if (!isref_legend) {
   g <- g + guides(shape = "none")
 }
 
