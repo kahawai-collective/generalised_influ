@@ -333,6 +333,13 @@ trend_divergence <- function(current, last, level, mode = "overlap") {
     }
     
   n_series <- length(unique(indices$Series))
+
+  # ggplot2 >= 4 errors when a manual scale has fewer colours than levels, so
+  # extend the palette by interpolation when more series are compared than it has
+  # colours (e.g. all event and daily series of a multispecies stock).
+  if (n_series > length(myColors)) {
+    myColors <- grDevices::colorRampPalette(myColors)(n_series)
+  }
   
   
   g <- ggplot(indices, aes(level, 
